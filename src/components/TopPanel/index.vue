@@ -39,6 +39,11 @@
 						:isShow="!arrangeShowState.isShow && currentShowPanel === 2"
 						:exitToolPanel="exitToolPanel"
 					/>
+					<!-- 牙齿分割功能 -->
+					<TeethSeg v-if="isManager"
+						:isShow="!arrangeShowState.isShow && currentShowPanel === 3"
+						:exitToolPanel="exitToolPanel"
+					/>
 					<div class="main-block progress" :class="{ show: arrangeShowState.isShow }">
 						<div class="arrange-progress-bar">
 							<el-dual-progress
@@ -121,6 +126,11 @@
 						:isShow="!arrangeShowState.isShow && currentShowPanel === 2"
 						:exitToolPanel="exitToolPanel"
 					/>
+					<!-- 牙齿分割功能 -->
+					<TeethSeg v-if="isManager"
+						:isShow="!arrangeShowState.isShow && currentShowPanel === 3"
+						:exitToolPanel="exitToolPanel"
+					/>
 					<div class="main-block progress" :class="{ show: arrangeShowState.isShow }">
 						<div class="arrange-progress-bar">
 							<el-dual-progress
@@ -180,6 +190,8 @@ import TeethPosAdjust from "./TeethPosAdjust.vue";
 import ToolMenu from "./ToolMenu.vue";
 import DentalArchAdjust from "./DentalArchAdjust.vue";
 import TeethRoot from "./TeethRoot.vue"
+//牙齿分割
+import TeethSeg from "./TeethSeg.vue"
 
 const store = useStore();
 const isManager = computed(() => 
@@ -237,6 +249,18 @@ const toolMenuList = computed(() => {
 		{
 			toolName: "生成虚拟牙根",
 			toolIntro: "调整虚拟牙根方向，随后生成虚拟牙根",
+			activate: true,
+			toolLimits: [
+				{
+					intro: "需要在[普通]模式下使用",
+					isFit: !isInSimMode.value,
+				},
+			],
+			allLimitsFit: false,
+		},
+		{//新增功能 牙齿分割
+			toolName: "牙齿分割",
+			toolIntro: "分离牙齿与牙龈，并提供微调工具",
 			activate: true,
 			toolLimits: [
 				{
