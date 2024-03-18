@@ -13,7 +13,7 @@ const colorConfig = {
 
 export { colorConfig };
 
-export default function(allActorList) {
+export default function (allActorList) {
     const store = useStore();
     const isArchUpdated = computed(() => store.state.actorHandleState.isArchUpdated);
     const toothOpacity = computed(() => store.state.actorHandleState.toothOpacity);
@@ -30,7 +30,7 @@ export default function(allActorList) {
             tooth: false, // 牙齿
             rootGenerate: false, //牙根
             originTooth: false, // 原始牙列
-            originRoot:false, // 原始牙根
+            originRoot: false, // 原始牙根
             bracket: false, // 托槽
             originBracket: false,
             axis: false, // 坐标轴
@@ -43,14 +43,14 @@ export default function(allActorList) {
             tooth: false, // 牙齿
             rootGenerate: false, //牙根
             originTooth: false, // 原始牙列
-            originRoot:false, // 原始牙根
+            originRoot: false, // 原始牙根
             bracket: false, // 托槽
             originBracket: false,
             axis: false, // 坐标轴
             arch: false,
         },
     }; // 整体添加删除
-    
+
     /**
      * @description 重置除当前双击选中托槽外的其它所有actor颜色
      */
@@ -321,7 +321,21 @@ export default function(allActorList) {
      * arch- 0-托槽+牙弓线 1-牙弓线 2-托槽 3-none
      */
     function actorShowStateUpdateFusion(state, isInSimulationMode) {
-        let { upper, upperOrigin, upperOriginBracket, upperOriginGingiva, lower, lowerOrigin, lowerOriginBracket, lowerOriginGingiva,teethWithGingiva, axis, arch } = state;
+        let { upper,
+            upperOrigin,
+            upperOriginBracket,
+            upperOriginGingiva,
+            lower,
+            lowerOrigin,
+            lowerOriginBracket,
+            lowerOriginGingiva,
+            teethWithGingiva,
+            axis,
+            arch,
+            segMode,
+            upperFullTooth,
+            lowerFullTooth,
+        } = state;
         let curActorInScene = {
             upper: {
                 // 上颌牙
@@ -473,8 +487,8 @@ export default function(allActorList) {
                     !preActorInScene[teethType].originTooth
                 ) {
                     allActorList[teethType].originTooth.forEach((item) => {
-                        item.actor.getProperty().setColor(isClickEnter?colorConfig.teeth:colorConfig.originTeeth)
-                        item.actor.getProperty().setOpacity(isClickEnter?1:toothOpacity.value/100)
+                        item.actor.getProperty().setColor(isClickEnter ? colorConfig.teeth : colorConfig.originTeeth)
+                        item.actor.getProperty().setOpacity(isClickEnter ? 1 : toothOpacity.value / 100)
                         addActorsList.push(item.actor);
                     });
                 }
@@ -492,8 +506,8 @@ export default function(allActorList) {
                     !preActorInScene[teethType].originRoot
                 ) {
                     allActorList[teethType].originRoot.forEach((item) => {
-                        item.actor.getProperty().setColor(isClickEnter?colorConfig.teeth:colorConfig.originTeeth)
-                        item.actor.getProperty().setOpacity(isClickEnter?1:toothOpacity.value/100)
+                        item.actor.getProperty().setColor(isClickEnter ? colorConfig.teeth : colorConfig.originTeeth)
+                        item.actor.getProperty().setOpacity(isClickEnter ? 1 : toothOpacity.value / 100)
                         addActorsList.push(item.actor);
                     });
                 }
@@ -528,9 +542,9 @@ export default function(allActorList) {
                     curActorInScene[teethType].originGingiva &&
                     !preActorInScene[teethType].originGingiva
                 ) {
-                    if(allActorList[teethType].originGingiva.actor){
-                        allActorList[teethType].originGingiva.actor.getProperty().setColor(isClickEnter?colorConfig.teeth:colorConfig.originTeeth)
-                        allActorList[teethType].originGingiva.actor.getProperty().setOpacity(isClickEnter?1:toothOpacity.value/100)    
+                    if (allActorList[teethType].originGingiva.actor) {
+                        allActorList[teethType].originGingiva.actor.getProperty().setColor(isClickEnter ? colorConfig.teeth : colorConfig.originTeeth)
+                        allActorList[teethType].originGingiva.actor.getProperty().setOpacity(isClickEnter ? 1 : toothOpacity.value / 100)
                     }
                     addActorsList.push(
                         allActorList[teethType].originGingiva.actor
@@ -546,21 +560,32 @@ export default function(allActorList) {
                 }
             }
         }
-        isClickEnter=false;
+
+        // 如果是segmode 清空list并加入seg actor
+        if (segMode) {
+            addActorsList.length = 0;
+            if (upper) { addActorsList.push(allActorList.fullToothPolyData.upper.actor) }
+            else { delActorsList.push(allActorList.fullToothPolyData.upper.actor)}
+            if (lower) { addActorsList.push(allActorList.fullToothPolyData.lower.actor) }
+            else { delActorsList.push(allActorList.fullToothPolyData.lower.actor)}
+        }
+
+
+        isClickEnter = false;
         // 更新pre状态为cur状态
         preActorInScene = curActorInScene;
         // 返回
         return { addActorsList, delActorsList };
     }
 
-    let isClickEnter=false;
-    let firstEnter=true; // 要求只有第一次进入时显示原始牙列
+    let isClickEnter = false;
+    let firstEnter = true; // 要求只有第一次进入时显示原始牙列
     const resetOriginShowStateFlag = inject('resetOriginShowStateFlag')
     /**
      * @description 进入(退出)细调模式时调用, 根据当前state决定牙弓线是否要加入(移除), 牙龈是否移除(加入)
      */
-    function adjustActorWhenSwitchSimulationMode(switchType = "enter", state, userType='NORMAL', clickEnter=false) {
-        isClickEnter=clickEnter&&!isArchUpdated.value;
+    function adjustActorWhenSwitchSimulationMode(switchType = "enter", state, userType = 'NORMAL', clickEnter = false) {
+        isClickEnter = clickEnter && !isArchUpdated.value;
         const addActorsList = [];
         const delActorsList = [];
         // 读取当前state牙龈、牙弓线状态
@@ -604,36 +629,36 @@ export default function(allActorList) {
                     );
                 }
             }
-            if(userType=='MANAGER'&&clickEnter&&!isArchUpdated.value){
+            if (userType == 'MANAGER' && clickEnter && !isArchUpdated.value) {
                 state.upperOrigin = switchType === "enter" ? true : false
                 state.lowerOrigin = switchType === "enter" ? true : false
                 // state.upperOriginBracket = switchType === "enter" ? true : false
                 // state.lowerOriginBracket = switchType === "enter" ? true : false
                 state.upperOriginGingiva = switchType === "enter" ? true : false
                 state.lowerOriginGingiva = switchType === "enter" ? true : false
-                if (allActorList[teethType].originTooth.length!=0){
-                    allActorList[teethType].originTooth.forEach(item=>{
+                if (allActorList[teethType].originTooth.length != 0) {
+                    allActorList[teethType].originTooth.forEach(item => {
                         (switchType === "enter" ? addActorsList : delActorsList).push(
                             item.actor
                         );
                     })
                 }
-                if (allActorList[teethType].originRoot.length!=0){
-                    allActorList[teethType].originRoot.forEach(item=>{
+                if (allActorList[teethType].originRoot.length != 0) {
+                    allActorList[teethType].originRoot.forEach(item => {
                         (switchType === "enter" ? addActorsList : delActorsList).push(
                             item.actor
                         );
                     })
                 }
-                if (allActorList[teethType].tooth.length!=0){
-                    allActorList[teethType].tooth.forEach(item=>{
+                if (allActorList[teethType].tooth.length != 0) {
+                    allActorList[teethType].tooth.forEach(item => {
                         (switchType === "exit" ? addActorsList : delActorsList).push(
                             item.actor
                         );
                     })
                 }
-                if (allActorList[teethType].rootGenerate.length!=0){
-                    allActorList[teethType].rootGenerate.forEach(item=>{
+                if (allActorList[teethType].rootGenerate.length != 0) {
+                    allActorList[teethType].rootGenerate.forEach(item => {
                         (switchType === "exit" ? addActorsList : delActorsList).push(
                             item.actor
                         );
@@ -646,28 +671,28 @@ export default function(allActorList) {
                 //         );
                 //     })
                 // }
-                if (allActorList[teethType].bracket.length!=0){
-                    allActorList[teethType].bracket.forEach(item=>{
+                if (allActorList[teethType].bracket.length != 0) {
+                    allActorList[teethType].bracket.forEach(item => {
                         (switchType === "exit" ? addActorsList : delActorsList).push(
                             item.actor
                         );
                     })
                 }
 
-                if (allActorList[teethType].originGingiva){
+                if (allActorList[teethType].originGingiva) {
                     (switchType === "enter" ? addActorsList : delActorsList).push(
                         allActorList[teethType].originGingiva.actor
                     );
                 }
-                if (allActorList[teethType].teethWithGingiva){
+                if (allActorList[teethType].teethWithGingiva) {
                     (switchType === "exit" ? addActorsList : delActorsList).push(
                         allActorList[teethType].teethWithGingiva.actor
                     );
                 }
-            }else if(userType=='NORMAL'){
-                isClickEnter=false;
+            } else if (userType == 'NORMAL') {
+                isClickEnter = false;
             }
-            if (switchType=='exit'){
+            if (switchType == 'exit') {
                 resetOriginShowStateFlag();
                 state.upperOrigin = false
                 state.lowerOrigin = false
@@ -675,13 +700,13 @@ export default function(allActorList) {
                 // state.lowerOriginBracket = false
                 state.upperOriginGingiva = false
                 state.lowerOriginGingiva = false
-                if (allActorList[teethType].originTooth.length!=0){
-                    allActorList[teethType].originTooth.forEach(item=>{
+                if (allActorList[teethType].originTooth.length != 0) {
+                    allActorList[teethType].originTooth.forEach(item => {
                         delActorsList.push(item.actor);
                     })
                 }
-                if (allActorList[teethType].originRoot.length!=0){
-                    allActorList[teethType].originRoot.forEach(item=>{
+                if (allActorList[teethType].originRoot.length != 0) {
+                    allActorList[teethType].originRoot.forEach(item => {
                         delActorsList.push(item.actor);
                     })
                 }
@@ -690,11 +715,11 @@ export default function(allActorList) {
                 //         delActorsList.push(tooth.actor);
                 //     })
                 // }
-                if (allActorList[teethType].originGingiva){
+                if (allActorList[teethType].originGingiva) {
                     delActorsList.push(allActorList[teethType].originGingiva.actor);
                 }
-            } 
-            
+            }
+
             if (curActorInScene[teethType].arch) {
                 // 进入[模拟排牙]时 如果当前牙弓线需要显示而不在屏幕中则添加
                 // 退出[模拟排牙]时 如果当前牙弓线在屏幕中则移除

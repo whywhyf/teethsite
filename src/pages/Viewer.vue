@@ -407,7 +407,8 @@
 								<div class="slider-block" v-if="originShowStateFlag!=0">
 									<el-slider v-model="toothOpacity" />
 								</div>
-								<ViewerMain
+
+								<ViewerMain 
 									ref="viewerMain"
 									:actorInScene="actorInScene"
 									:changeLoadingMessage="changeLoadingMessage"
@@ -426,6 +427,7 @@ import { ref, reactive, watch, computed, getCurrentInstance, onMounted, toRaw, p
 import { useStore } from "vuex";
 import TopPanel from "../components/TopPanel";
 import ViewerMain from "../components/ViewerComponent/ViewerMain";
+import ViewerSeg from "../components/ViewerComponent/ViewerSeg";
 import Loading from "../components/ViewerComponent/Loading";
 import { throttle } from "@kitware/vtk.js/macro";
 import Dialog from "../components/Dialog/index";
@@ -563,6 +565,9 @@ let actorInScene = reactive({
 	teethWithGingiva: 1, // 牙齿+牙龈0/牙齿1
 	axis: false, // 坐标轴显示/隐藏
 	arch: 2, // 牙弓线显示01/隐藏23, 托槽显示02/隐藏13
+	segMode: true,// seg模式
+	upperFullTooth: true,// 是否显示上牙
+	lowerFullTooth: true,// 是否显示下牙
 });
 
 const currentSelectBracketName = computed(() => store.state.actorHandleState.currentSelectBracketName);

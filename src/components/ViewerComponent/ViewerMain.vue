@@ -119,6 +119,7 @@ import TeethBiteWorker from "../../hooks/teethBite.worker";
 import { norm } from "../../reDesignVtk/Math";
 import { presetArrangeDataList } from "../../static_config";
 import { ElMessage } from 'element-plus'
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 
 
 const props = defineProps({
@@ -141,6 +142,9 @@ const props = defineProps({
 			teethWithGingiva: 2, // 牙齿+牙龈0/牙齿1/牙龈2
 			axis: false, // 坐标轴显示/隐藏
 			arch: 2, // 牙弓线显示01/隐藏23, 托槽显示02/隐藏13
+			segMode: false,// seg模式
+			upperFullTooth: false,// 是否显示上牙
+			lowerFullTooth: false,// 是否显示下牙
 		}),
 	},
 });
@@ -1113,6 +1117,11 @@ const {
 } = asyncTeethArrange(allActorList);
 const teethStandardAxis = store.state.actorHandleState.teethArrange.teethStandardAxis;
 const resetTeethAxisFinetuneRecord = store.state.actorHandleState.teethArrange.teethAxisFinetuneRecord;
+
+// 分割和微调用的数据
+let segContext = null;
+// global.segContext = segContext;
+
 // const arrangeMatrixList =
 //     store.state.actorHandleState.teethArrange.arrangeMatrix;
 const arrangeMatrixList = computed(() => store.getters["actorHandleState/mergedArrangeMatrix"]);
@@ -1425,10 +1434,53 @@ watch(
 	}
 );
 
+
+// NOTE 为该polydata初始化colorarray
+function initColorArray(polyData, r, g, b){
+	const size = polyData.getPoints().getData().length;
+  	const rgbArray = new Uint8Array(size);
+  	let offset = 0;
+
+  while (offset < size) {
+    rgbArray[offset++] = r;
+    rgbArray[offset++] = g;
+    rgbArray[offset++] = b;
+  }
+
+  	polyData.getPointData().setScalars(
+    	vtkDataArray.newInstance({
+      	name: 'color',
+      	numberOfComponents: 3,
+      	values: rgbArray,
+    	})
+  	);
+}
+
+
 // 用于监听显示/隐藏状态改变
 watch(props.actorInScene, (newVal) => {
 	const { addActorsList, delActorsList } = actorShowStateUpdateFusion(newVal, fineTuneMode.value !== "normal");
 	actorInSceneAdjust(addActorsList, delActorsList);
+	// NOTE 初始化segcontext
+	if(segContext == null && props.actorInScene.segMode){
+		const upperPolyData = allActorList.fullToothPolyData.upper.polyData;
+		const lowerPolyData = allActorList.fullToothPolyData.lower.polyData;
+
+		initColorArray(upperPolyData,255,255,255)
+		initColorArray(lowerPolyData,255,255,255)
+		const upperColor = allActorList.fullToothPolyData.upper.polyData.getPointData().getScalars().getData()
+		const lowerColor = allActorList.fullToothPolyData.lower.polyData.getPointData().getScalars().getData()
+
+		segContext = {
+			upperColor,
+            lowerColor,
+            upperPolyData,
+            lowerPolyData,
+            segMode: props.actorInScene.segMode
+		}
+		global.segContext = segContext;
+		console.log("segmode now, segContext updated")
+	}
 	if (vtkContext && !initRenderCamera) {
 		const { renderWindow, renderer } = vtkContext;
 		// 初始加载需要调整一次镜头
