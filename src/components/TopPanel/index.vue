@@ -127,6 +127,7 @@
 						:exitToolPanel="exitToolPanel"
 					/>
 					<!-- 牙齿分割功能 -->
+					<!-- v-if 条件渲染，false即不加载该模板 这里是登录为管理员才渲染-->
 					<TeethSeg v-if="isManager"
 						:isShow="!arrangeShowState.isShow && currentShowPanel === 3"
 						:exitToolPanel="exitToolPanel"

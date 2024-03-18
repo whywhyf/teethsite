@@ -69,12 +69,12 @@
 						:class="{ disabled: false }"
 						@click="resetTeethRootParams()"
 					>
-						重置
+						switch
 					</button>
 				</div>
 				<div class="half clear-fix">
 					<button class="handle-btn teeth-type-button" @click="resetTeethRoot()">
-						取消
+						push
 					</button>
 				</div>
 			</div>
@@ -88,12 +88,12 @@
 						:class="{ disabled: false }"
 						@click="resetTeethRootParams()"
 					>
-						重置
+						undo
 					</button>
 				</div>
 				<div class="half clear-fix">
 					<button class="handle-btn teeth-type-button" @click="resetTeethRoot()">
-						取消
+						redo
 					</button>
 				</div>
 			</div>

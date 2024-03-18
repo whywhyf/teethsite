@@ -84,6 +84,15 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
             rootGenerate: [], //生成的牙根
             originRoot: [], //和原始牙列位置相匹配的牙根
         },
+        // 分别保存全牙的point cell数据和polydata
+        fullToothData:{
+            upper:{},
+            lower:{}
+        },
+        fullToothPolyData:{
+            upper:{},
+            lower:{}
+        },
         picture: null,
         intersection: null
     }; // 全部actor
@@ -1594,6 +1603,12 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                                     bracketBottomPointValues,
                                 });
                             }
+                            // DONE 根据子线程返回的全坐标构建polydata并返回给viewermain
+                            console.log('全牙数据',event.data.allActorList.fullToothData, teethType);
+                            allActorList.fullToothData[teethType] = event.data.allActorList.fullToothData
+                            console.log('allActorList', allActorList)
+                            allActorList.fullToothPolyData[teethType] = generateActorByData(event.data.allActorList.fullToothData)
+
 
                             handleTeethActorDatas(
                                 teethType,
@@ -1717,6 +1732,7 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
             });
         }
     }
+
     return {
         allActorList,
         patientUID,

@@ -1064,7 +1064,7 @@ const {
 } = userMatrixControl();
 
 // let cameraFocalPoint = 0.0 // 记录相机焦点, 可在resetView中使用, 焦点通常在模型中心
-
+// NOTE 在这里获取模型polydata
 const {
 	allActorList,
 	patientUID,
@@ -1081,6 +1081,7 @@ const {
 	rotateMessageList,
 	longAxisData,
 } = asyncDataLoadAndParse(vtkTextContainer, userMatrixList, applyCalMatrix);
+
 // applyCalMatrix用于对更新长轴点时生成的新坐标轴设置userMatrix
 const {
 	currentSelectBracket,
@@ -1527,6 +1528,7 @@ let finishLoad = computed(() => {
 	return upperType !== "wait" && lowerType !== "wait" && (upperType === "success" || lowerType === "success");
 });
 
+// NOTE 监视finishload flag 数据加载完后在这里渲染？
 watch(finishLoad, (newVal) => {
 	if (newVal) {
 		let upperType = progressConfig.upper[currentStep.upper].state.type;

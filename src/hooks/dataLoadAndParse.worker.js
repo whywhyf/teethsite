@@ -1489,6 +1489,7 @@ function generateTeethActor() {
             teethWithGingiva: {}, // 牙龈
             tooth: {}, // 牙齿
             bracket: {}, // 托槽
+            fullToothData: {},// 返回一个全牙的point cell数据
         },
         mainCameraConfigs: {},
         bracketData: {},
@@ -1497,6 +1498,8 @@ function generateTeethActor() {
         teethWithGingiva: {},
         tooth: {},
         bracket: {},
+        // 返回一个全牙的point cell数据
+        fullToothData: {},
     };
     let mainCameraConfigs = {};
     let bracketData = {};
@@ -1512,6 +1515,12 @@ function generateTeethActor() {
     stepConfig.state.message = message + "(牙龈)";
     self.postMessage({ ...retData, ...stepConfig.state });
     let { pointValues, cellValues, faceIndexDict } = parseStl(teethStlObj);
+
+    // ------------------------------------------------------------------------
+    // 返回一个全牙的point cell数据,这个allactorlist会在该函数末尾被添加进retdata并发送给主线程
+    // ------------------------------------------------------------------------
+    allActorList.fullToothData = {pointValues, cellValues}
+
     // // 保存
     // allActorList.teethWithGingiva = {
     //     pointValues,
