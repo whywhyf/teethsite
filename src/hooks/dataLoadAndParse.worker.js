@@ -8,13 +8,7 @@ import {
     projectToAxis,
     estimateBracketBottomSlope,
 } from "../utils/bracketFineTuneByTypedArray";
-import {
-    calculateTransMatrix,
-} from "./userMatrixControl";
-import { 
-    calculateLineActorPointsAndDistance, 
-    calculateLineActorPointsAndDistanceNew 
-} from "./distanceLineControl";
+import { calculateLineActorPointsAndDistance } from "./distanceLineControl";
 import vtkMath, {
     add,
     angleBetweenVectors,
@@ -28,15 +22,11 @@ import vtkPlane from "@kitware/vtk.js/Common/DataModel/Plane";
 import vtkCutter from "@kitware/vtk.js/Filters/Core/Cutter";
 import vtkPolyData from "@kitware/vtk.js/Common/DataModel/PolyData";
 import vtkMapper from "@kitware/vtk.js/Rendering/Core/Mapper";
-import vtkMatrixBuilder from "@kitware/vtk.js/Common/Core/MatrixBuilder";
 import {
     setTokenHeader,
     setUserIdHeader,
     sendRequestWithToken,
 } from "../utils/tokenRequest";
-import vtkRootHandleRepresentation from "../reDesignVtk/rootHandleWidget/RootHandleRepresentation";
-import rootHandleWidget from "../reDesignVtk/rootHandleWidget";
-// import XML from '@kitware/vtk.js/IO/XML';
 
 let token = "";
 let userId = "";
@@ -130,7 +120,7 @@ let progressConfig = {
         toothData: {},
         bracketData: {},
     },
-    // 制造轴线actor
+    // 完成上述9步后即为结束
     9: {
         state: {
             message: "正在制造teethType轴线模型......",
@@ -138,15 +128,7 @@ let progressConfig = {
             progress: "",
         },
     },
-    // 制造牙根actor
     10: {
-        state: {
-            message: "正在制造teethType虚拟牙根模型......",
-            type: "wait",
-            progress: "",
-        },
-    },
-    11: {
         state: {
             message: "完成！",
             type: "success",
@@ -621,36 +603,7 @@ function generateBracketObjFromStl(stlData, xmlData) {
     ];
     // 托槽[左右]法向量
     let xNormal = calculateN(yNormal, zNormal);
-    let centerRotate = center;
-    let yNormalRotate = yNormal;
-    let zNormalRotate = zNormal;
-    let xNormalRotate = xNormal;
-    if(xmlData.TcPosition[0].TcCenterCoorRotate){
-        // 托槽位置中心点
-        let centerPointRotate = xmlData.TcPosition[0].TcCenterCoorRotate[0];
-        centerRotate = [
-            parseFloat(centerPointRotate.Coor0),
-            parseFloat(centerPointRotate.Coor1),
-            parseFloat(centerPointRotate.Coor2),
-        ];
-        // 托槽[上下]法向量1
-        let tcCenterRotate = xmlData.TcPosition[0].TcCenterAxisRotate[0];
-        yNormalRotate = [
-            parseFloat(tcCenterRotate.Coor0),
-            parseFloat(tcCenterRotate.Coor1),
-            parseFloat(tcCenterRotate.Coor2),
-        ];
-        // 托槽[前后]法向量(屏幕深度方向)
-        let tcNormalRotate = xmlData.TcPosition[0].TcNormalRotate[0];
-        zNormalRotate = [
-            parseFloat(tcNormalRotate.Coor0),
-            parseFloat(tcNormalRotate.Coor1),
-            parseFloat(tcNormalRotate.Coor2),
-        ];
-        // 托槽[左右]法向量
-        xNormalRotate = calculateN(yNormalRotate, zNormalRotate);
-    }
-    
+
     // 保存托槽位置和3轴法向量
     return {
         pointValues,
@@ -659,10 +612,6 @@ function generateBracketObjFromStl(stlData, xmlData) {
         xNormal,
         yNormal,
         zNormal,
-        centerRotate,
-        xNormalRotate,
-        yNormalRotate,
-        zNormalRotate,
     };
 }
 
@@ -727,10 +676,6 @@ function generateBracketData(bracketStlData, needBracketNameList) {
             xNormal,
             yNormal,
             zNormal,
-            centerRotate,
-            xNormalRotate,
-            yNormalRotate,
-            zNormalRotate,
         } = generateBracketObjFromStl(stlData, posData);
 
         let position = {
@@ -738,12 +683,6 @@ function generateBracketData(bracketStlData, needBracketNameList) {
             xNormal, // 左右法向量
             yNormal, // 上下法向量
             zNormal, // 前后法向量(屏幕深度方向)
-        };
-        let positionRotate = {
-            centerRotate,
-            xNormalRotate,
-            yNormalRotate,
-            zNormalRotate,
         };
         // 保存当前模型的向上方向
         if (bracketName === cameraBaseBracket) {
@@ -779,7 +718,6 @@ function generateBracketData(bracketStlData, needBracketNameList) {
             name: bracketName,
             direction,
             position,
-            positionRotate,
             pointValues,
             cellValues,
         });
@@ -956,35 +894,6 @@ function getCutActorList(
     });
     return cutterActorList;
 }
-/**
- * @description: 将两个polydata拼接到一起
- * @param {*} pointsData1
- * @param {*} polysData1
- * @param {*} pointsData2
- * @param {*} polysData2
- * @return {*} 拼接好的points和polys
- * @author: ZhuYichen
- */
-function combinePointDataAndPolysData(pointsData1, polysData1, pointsData2, polysData2) {
-    // 合并两组点数据
-    const combinedPointsData = new Float32Array(pointsData1.length + pointsData2.length);
-    combinedPointsData.set(pointsData1, 0);
-    combinedPointsData.set(pointsData2, pointsData1.length);
-  
-    // 由于多边形的索引需要更新，我们需要将第二组多边形数据中的索引偏移
-    const offset = pointsData1.length / 3; // 每个点有3个坐标
-    const offsetPolysData2 = new Uint32Array(polysData2.length);
-    for (let i = 0; i < polysData2.length; i++) {
-      offsetPolysData2[i] = polysData2[i] + offset;
-    }
-  
-    // 合并两组多边形数据
-    const combinedPolysData = new Uint32Array(polysData1.length + offsetPolysData2.length);
-    combinedPolysData.set(polysData1, 0);
-    combinedPolysData.set(offsetPolysData2, polysData1.length);
-  
-    return { combinedPointsData, combinedPolysData };
-  }
 
 /**
  * @description 需要计算沿长轴平行方向上托槽中心与startPoint的投影距离之差, 并构建相应Line作为回顾
@@ -1003,29 +912,16 @@ function combinePointDataAndPolysData(pointsData1, polysData1, pointsData2, poly
  * @param endPoint 牙底点
  * @param zNormal 托槽法向量
  * @param floatDist 直线沿zNormal方向上浮距离
- * @param pointValues 牙齿点数据
- * @param cellValues 牙齿面片数据
  */
-function initDistanceLine(center, startPoint, endPoint, zNormal, xNormal, floatDist, pointValues, cellValues) {
-    // 2023.11.02更新：距离线计算不再以牙尖小球为终点，而是与牙齿最尖端相切
-    // const { pointValues, distance } = calculateLineActorPointsAndDistance(
-    //     center,
-    //     startPoint,
-    //     endPoint,
-    //     zNormal,
-    //     floatDist
-    // );
-    const { linePointValues, distance, circlePoints, circlePolys } = calculateLineActorPointsAndDistanceNew(
+function initDistanceLine(center, startPoint, endPoint, zNormal, floatDist) {
+    const { pointValues, distance } = calculateLineActorPointsAndDistance(
         center,
         startPoint,
         endPoint,
         zNormal,
-        xNormal,
-        floatDist,
-        pointValues,
-        cellValues,
+        floatDist
     );
-    const lineCellValues = new Uint32Array([
+    const cellValues = new Uint32Array([
         2,
         1,
         2, // startPoint->startPlaneProj
@@ -1036,14 +932,8 @@ function initDistanceLine(center, startPoint, endPoint, zNormal, xNormal, floatD
         3,
         4, // centerPlaneProj->center
     ]);
-    // 为了方便，这里将距离线和垂面的polydata做了拼接
-    // TODO:将两部分分开返回
-    const {combinedPointsData, combinedPolysData} = combinePointDataAndPolysData(linePointValues, lineCellValues, circlePoints, circlePolys)
-    return { 
-        pointValues:combinedPointsData, 
-        cellValues:combinedPolysData, 
-        distance,
-    };
+
+    return { pointValues, cellValues, distance };
 }
 
 // step0(从地址中检测patientUID)+step1(登录身份认证)需要在主线程中完成
@@ -1072,7 +962,7 @@ function queryModelPath(configApi) {
                 stepConfig.state.type = "deactive";
             }
             // flagFirstRead用于判断是否是第一次读入数据，若是第一次，则需要进行托槽和牙齿的碰撞检测
-            // 2022/12/12更新：不再采用从服务器读取flag字段，而是在xml文件中添加该字段
+            // 2022/12/12更新 不再采用从服务器读取flag字段，而是在xml文件中添加该字段
             // if (resp.data.flag) {
             //     stepConfig.firstReadFlag = resp.data.flag;
             // }
@@ -1176,7 +1066,6 @@ function parseCADO() {
         stlObj: null, // 这一步需要返回stlObj.teeth[teethType]
         xmlObj: null, // 这一步需要返回xmlObj[teethType]
         rotateSetting: { rotCenter: [0, 0, 0], rotAxis: [0, 0, 0] },
-        targetBracketUID: '',
     };
     // 解析文件, 生成对应的stl与xml信息,存入stlObj与xmlObj, 用于后续解析成polyData并渲染在页面中
     // 其中的stl文件包含牙齿数据, xml文件包括牙齿托槽的各项信息
@@ -1193,12 +1082,11 @@ function parseCADO() {
             stepConfig.xmlObj = result.CADOProject;
             const teethType = stepConfig.xmlObj.OriginalModel[0].$.jaw;
             if (stepConfig.xmlObj.ProcessState[0].$.collisionState){
-                firstReadFlag[teethType] = parseInt(stepConfig.xmlObj.ProcessState[0].$.collisionState)
+                firstReadFlag[teethType] = stepConfig.xmlObj.ProcessState[0].$.collisionState
             }
             // 从xml中的positionResult中找到托槽名字
             let targetBracketUID =
                 stepConfig.xmlObj.PositionResult[0].$.BracketType;
-            retData.targetBracketUID = targetBracketUID;
             // console.log(windowLinkConfigClone.bracketTypeInfoQueryApi)
             sendRequestWithToken({
                 method: "GET",
@@ -1207,8 +1095,6 @@ function parseCADO() {
                     "?ClientType=UserClient",
             }).then(
                 (res) => {
-                    res.data.data.forEach((item)=>{
-                    })
                     let targetBracketData = res.data.data.filter(
                         (item) => item.BracketUID === targetBracketUID
                         // (item) => item.BracketUID === 'd7efced3115b4daba0758b1a7a302cc0'
@@ -1224,7 +1110,7 @@ function parseCADO() {
                         retData.toNext = true;
                         retData.stlObj = stepConfig.stlObj;
                         retData.xmlObj = stepConfig.xmlObj;
-                        // console.log(JSON.stringify(retData.xmlObj.teethRootData))
+                        // console.log(JSON.stringify(retData.xmlObj))
                         retData.arrangeData = parseArrangeData(retData.xmlObj);
                         // retData.rotateSetting = generateTeethRotateSetting(stepConfig.xmlObj)
                         self.postMessage({ ...retData, ...stepConfig.state });
@@ -1401,6 +1287,7 @@ function downloadBracketData(browser) {
                 // 而其他的下载下来就是解压过的文件
                 stepConfig.bracketData = resp.data;
             }
+
             retData.toNext = true;
             self.postMessage({ ...retData, ...stepConfig.state });
         },
@@ -1561,12 +1448,45 @@ function generateTeethActor() {
             name,
             direction,
             position: { center, xNormal, yNormal, zNormal },
-            positionRotate: { centerRotate, xNormalRotate, yNormalRotate, zNormalRotate },
             pointValues,
             cellValues,
         } = item;
 
         // 返回主线程的数据
+        //计算初始center（bounding-box的中心）
+        let xmax=-10000,ymax=-10000,zmax=-10000;
+        let xmin=10000,ymin=10000,zmin=10000;
+        pointValues.forEach((value,index)=>{
+            if (index%3==0){
+                if(value>xmax){
+                    xmax = value
+                }
+                if(value<xmin){
+                    xmin = value
+                }
+            }
+            else if(index%3==1){
+                if(value>ymax){
+                    ymax = value
+                }
+                if(value<ymin){
+                    ymin = value
+                }
+            }
+            else{
+                if(value>zmax){
+                    zmax = value
+                }
+                if(value<zmin){
+                    zmin = value
+                }
+            }
+        })
+        // console.log(name, xmax,xmin,ymax,ymin,zmax,zmin)
+        const originCenter = [(xmax+xmin)/2, (ymax+ymin)/2, (zmax+zmin)/2]
+        // const originCenter = [0,0,0]
+        
+        // console.log(name, pointValues)
         allActorList.bracket[name] = { pointValues, cellValues };
 
         // 获得底部面片和底部边缘点(最多40点)
@@ -1579,11 +1499,8 @@ function generateTeethActor() {
         // 检测完成后的中心+3法向量作为真正的初始position
         // 构造新的position和fineTuneRecord
         let position = {}
-        let positionRotate = {}
         let fineTuneRecord = {}
-        let fineTuneRecordRotate = {}
         let initTransMatrix = []
-        let initTransMatrixRotate = []
         const teethType = progressConfig["5"].xmlObj.OriginalModel[0].$.jaw;
         if (firstReadFlag[teethType]){
             position = {
@@ -1593,12 +1510,6 @@ function generateTeethActor() {
                 yNormal,
                 zNormal,
             };
-            positionRotate = {
-                center:centerRotate,
-                xNormal:xNormalRotate,
-                yNormal:yNormalRotate,
-                zNormal:zNormalRotate,
-            }
             fineTuneRecord = {
                 actorMatrix: {
                     // 决定托槽本身角度的法向量方向(定位中心+角度轴), 同时作为托槽进行平移、旋转时所依赖的法向量方向(移动轴)
@@ -1608,27 +1519,21 @@ function generateTeethActor() {
                     zNormal,
                 },
             };
-            fineTuneRecordRotate = {
-                actorMatrix: {
-                    // 决定托槽本身角度的法向量方向(定位中心+角度轴), 同时作为托槽进行平移、旋转时所依赖的法向量方向(移动轴)
-                    center:centerRotate,
-                    xNormal:xNormalRotate,
-                    yNormal:yNormalRotate,
-                    zNormal:zNormalRotate,
-                },
-            };
             // 此时item受到改变, 但直接的fineTuneRecord和position并未改变
             // 计算初始刚体变换矩阵并存入
+            // console.log(name,center,
+            //         xNormal,
+            //         yNormal,
+            //         zNormal,)
             initTransMatrix = calculateRigidBodyTransMatrix(
                 center,
                 xNormal,
                 yNormal,
                 zNormal,
+                originCenter
             );
-            initTransMatrixRotate = calculateTransMatrix(
-                position,
-                positionRotate
-            )
+            // console.log(name, initTransMatrix[12],initTransMatrix[13],initTransMatrix[14])
+            // console.log(center)
         }else{
             // 初始位置或有托槽内陷, 进行初始碰撞检测
             const {
@@ -1646,6 +1551,7 @@ function generateTeethActor() {
                 xNormal,
                 yNormal,
                 zNormal,
+                originCenter
             );
             // 检测完成后的中心+3法向量作为真正的初始position
             // 构造新的position和fineTuneRecord
@@ -1665,15 +1571,6 @@ function generateTeethActor() {
                     zNormal: [...transZNormal],
                 },
             };
-            fineTuneRecordRotate = {
-                actorMatrix: {
-                    // 决定托槽本身角度的法向量方向(定位中心+角度轴), 同时作为托槽进行平移、旋转时所依赖的法向量方向(移动轴)
-                    center: [...transCenter],
-                    xNormal: [...transXNormal],
-                    yNormal: [...transYNormal],
-                    zNormal: [...transZNormal],
-                },
-            };
             // 此时item受到改变, 但直接的fineTuneRecord和position并未改变
             // 计算初始刚体变换矩阵并存入
 
@@ -1682,22 +1579,14 @@ function generateTeethActor() {
                 transXNormal,
                 transYNormal,
                 transZNormal,
+                originCenter
             );
-            // 如果是首次读入，那就不会有转矩信息
-            initTransMatrixRotate = [
-                1,0,0,0,
-                0,1,0,0,
-                0,0,1,0,
-                0,0,0,1,
-            ]
         }
         bracketData[name] = {
             direction,
             position,
             fineTuneRecord,
-            fineTuneRecordRotate,
             initTransMatrix,
-            initTransMatrixRotate,
             bracketBottomPointValues,
             bottomFaceIndexList,
         };
@@ -1773,7 +1662,7 @@ function generateTeethAxisActor(postCenter) {
         if (toothPolyData) {
             const { pointValues, cellValues } = toothPolyData;
             const {
-                position: { center, zNormal, xNormal },
+                position: { center, zNormal },
             } = bracketData[name];
             // 坐标轴来源：一个个垂直或平行的网格状相交平面与牙齿点集的交集
             // 平面决定于一个法向量+一个平面上的点
@@ -1794,10 +1683,7 @@ function generateTeethAxisActor(postCenter) {
                 startPoint,
                 endPoint,
                 zNormal,
-                xNormal,
-                1.5,
-                pointValues,
-                cellValues
+                1.5
             );
             allActorList.axis[name] = axisActors;
             allActorList.line[name] = lineActor;
@@ -1812,169 +1698,6 @@ function generateTeethAxisActor(postCenter) {
     retData.toNext = true;
     self.postMessage({ ...retData, ...stepConfig.state });
 }
-
-// step10
-function generateTeethRootActor() {
-    const retData = {
-        step: 10, // 当前正在执行第10步
-        toNext: false, // 是否继续执行下一步
-        longAxisData: {},
-        allActorList: {
-            root: [],
-            rootGenerate: [],
-            originRoot: [],
-        },
-    };
-    const teethType = targetTeethType;
-    const { xmlObj } = progressConfig["5"];
-    const teethRootData = xmlObj.teethRootData
-    const { toothData, bracketData } = progressConfig["8"];
-    const toothPolyDatas = [];
-    Object.keys(toothData).forEach((name) => {
-        const polyData = vtkPolyData.newInstance();
-        polyData.getPoints().setData(toothData[name].pointValues);
-        polyData.getPolys().setData(toothData[name].cellValues);
-        toothPolyDatas[name] = polyData;
-    });
-    const stepConfig = progressConfig["10"];
-
-    let finish = 0;
-    let total = 1;
-    stepConfig.state.progress = finish + "/" + total;
-    self.postMessage({ ...retData, ...stepConfig.state });
-    // 生成牙根方向圆锥数据
-    for(let toothName in toothPolyDatas){
-        if(toothName[0].toLowerCase()==teethType[0]){
-            var rootTopPoint;
-            var rootBottomPoint;
-            var rootRadiusPoint;
-            if(teethRootData && teethRootData.length>0){
-                const curRootData = teethRootData.filter(obj => obj.toothName[0] === toothName)[0];
-                rootTopPoint = curRootData.topSphereCenter[0].split(",").map(part => parseFloat(part))
-                rootBottomPoint = curRootData.bottomSphereCenter[0].split(",").map(part => parseFloat(part))
-                rootRadiusPoint = curRootData.radiusSphereCenter[0].split(",").map(part => parseFloat(part))
-            }else{
-                // 使用托槽z轴方向作为牙根方向
-                var upNormal = [
-                    -bracketData[toothName].position.yNormal[0],
-                    -bracketData[toothName].position.yNormal[1],
-                    -bracketData[toothName].position.yNormal[2],
-                ];             
-                const bounds = toothPolyDatas[toothName].getBounds()
-                rootTopPoint = [
-                    (bounds[0]+bounds[1])/2,
-                    (bounds[2]+bounds[3])/2,
-                    (bounds[4]+bounds[5])/2,
-                ] //牙根底部点坐标
-                // const upNormal = []
-                // subtract(longAxisData[toothName].endPoint,longAxisData[toothName].startPoint,upNormal)
-                // normalize(upNormal)
-                rootBottomPoint = [] //牙根顶部点坐标
-                add(rootTopPoint, multiplyScalar(upNormal, 7), rootBottomPoint)
-                const rootRadius = Math.min(bounds[1]-bounds[0],bounds[3]-bounds[2])/4
-                const radiusNormal = [] //半径方向
-                cross(upNormal, [0,1,0], radiusNormal)
-                normalize(radiusNormal)
-                rootRadiusPoint = [] //牙根半径点坐标
-                add(rootBottomPoint, multiplyScalar(radiusNormal, rootRadius), rootRadiusPoint)
-            }
-            
-            //由于worker不能发送actor对象，只能先将坐标发回去，在主线程中构造
-            retData.allActorList.root.push({
-                toothName,
-                bottomSphereCenter: rootBottomPoint,
-                topSphereCenter: rootTopPoint,
-                radiusSphereCenter: rootRadiusPoint,
-            })
-        }
-    }
-
-    // 如果CADO中含有牙根数据，说明之前保存过，则需要直接生成牙根
-    // 如果不存在牙根数据，则不生成
-    if(teethRootData && teethRootData.length>0){
-        generateRoot(teethType, toothData, retData.allActorList.root)
-        .then((result) => {
-            retData.allActorList.rootGenerate = result.rootList;
-            retData.allActorList.originRoot = result.originRootList;
-
-            finish++;
-            stepConfig.state.progress = finish + "/" + total;
-            self.postMessage({ ...retData, ...stepConfig.state });
-
-            retData.toNext = true;
-            self.postMessage({ ...retData, ...stepConfig.state });
-        })
-        .catch((error) => {
-            console.error(error); // 处理错误情况
-        });
-    }else{
-        finish++;
-        stepConfig.state.progress = finish + "/" + total;
-        self.postMessage({ ...retData, ...stepConfig.state });
-
-        retData.toNext = true;
-        self.postMessage({ ...retData, ...stepConfig.state });
-    }
-}
-
-async function generateRoot(teethType, toothData, rootInfoList) {
-    let rootList = [];
-    let originRootList = [];
-    const promises = []; // 存储每个请求的 Promise 对象
-  
-    Object.entries(toothData).forEach(([toothName, toothValues]) => {
-      if (toothName[0].toLowerCase() === teethType[0]) {
-    //   if (toothName === 'LR6') {
-        const rootInfo = rootInfoList.filter(obj => obj.toothName === toothName)[0];
-        const jsonPart = JSON.stringify(rootInfo);
-        let formData = new FormData();
-        formData.append("polyData", new Blob([JSON.stringify(toothValues)], { type: "application/json" }));
-        formData.append("jsonPart", new Blob([jsonPart], { type: "application/json" }));
-  
-        const generateRootPath = "/backend/generate_root_json/";
-  
-        // 将请求包装成 Promise 对象
-        const promise = new Promise((resolve, reject) => {
-          sendRequestWithToken({
-            method: "POST",
-            url: encodeURI(generateRootPath),
-            data: formData,
-            responseType: "json",
-            headers: {
-              "Cache-Control": "no-cache",
-            },
-          })
-            .then((resp) => {
-                const pointValues = resp.data.pointValues;
-                const cellValues = resp.data.cellValues;
-                rootList.push({ 
-                    toothName, 
-                    pointValues,
-                    cellValues,
-                });
-                const clonePointValues = structuredClone(pointValues)
-                const cloneCellValues = structuredClone(cellValues)
-                originRootList.push({ 
-                    toothName, 
-                    pointValues: clonePointValues,
-                    cellValues: cloneCellValues,
-                });
-                resolve(); // 请求成功，resolve
-            })
-            .catch((error) => {
-              console.log("error");
-              reject(error); // 请求失败，reject
-            });
-        });
-  
-        promises.push(promise); // 将每个请求的 Promise 对象添加到数组中
-      }
-    // }
-    });
-  
-    await Promise.all(promises); // 等待所有请求完成
-    return { rootList, originRootList };
-  }
 
 self.onmessage = function(event) {
     const { step } = event.data;
@@ -2025,11 +1748,6 @@ self.onmessage = function(event) {
         case 9: {
             const {postCenter} = event.data;
             generateTeethAxisActor(postCenter);
-            break;
-        }
-        case 10: {
-            const {} = event.data;
-            generateTeethRootActor();
             break;
         }
     }

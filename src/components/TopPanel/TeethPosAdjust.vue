@@ -12,7 +12,6 @@
 					:class="{ activate: selectKeyBoardEvent === 'teethpos' }"
 					@click="switchSelectKeyBoardEvent()"
 				/>
-				<div class="icon-switch bg" @click="switchToolPanel()" />
 			</div>
 		</div>
 		<div class="handle-box" :class="{ deactivate: !isTeethPositionAdjustFree }">
@@ -143,8 +142,16 @@
 				</div>
 			</div>
 		</div>
-		<!-- 2023.1.10更新：给咬合调整添加一个临时状态保存和重置到上一保存点的功能，因此把原来的
-		重置按钮更名为初始化按钮，并调整几个按钮的位置 -->
+		<div class="handle-box" :class="{ deactivate: !isTeethPositionAdjustFree }">
+			<div class="handle-title">重置</div>
+			<div class="handle-body">
+				<div class="half clear-fix">
+					<button class="handle-btn teeth-type-button" @click="updateTeethPositionAdjustMoveType('RESET')">
+						重置
+					</button>
+				</div>
+			</div>
+		</div>
 		<div class="handle-box" :class="{ deactivate: !isTeethPositionAdjustFree }">
 			<div class="handle-title">一键咬合</div>
 			<div class="handle-body">
@@ -157,32 +164,6 @@
 					<div class="handle-btn teeth-type-button" @click="updateTeethPositionAdjustMoveType('YBITE')">
 						前后咬合
 					</div>
-				</div>
-			</div>
-		</div>
-		<!-- 添加状态操作栏，包含重置和保存两个功能 -->
-		<div class="handle-box" :class="{ deactivate: !isTeethPositionAdjustFree }">
-			<div class="handle-title">状态操作</div>
-			<div class="handle-body">
-				<div class="half clear-fix">
-					<div class="handle-btn teeth-type-button" @click="updateTeethPositionAdjustMoveType('TEMPSAVE')">
-						保存
-					</div>
-				</div>
-				<div class="half clear-fix">
-					<div class="handle-btn teeth-type-button" @click="updateTeethPositionAdjustMoveType('TEMPRESET')">
-						重置
-					</div>
-				</div>
-			</div>
-		</div>
-		<div class="handle-box" :class="{ deactivate: !isTeethPositionAdjustFree }">
-			<div class="handle-title">初始化</div>
-			<div class="handle-body">
-				<div class="half clear-fix">
-					<button class="handle-btn teeth-type-button" @click="updateTeethPositionAdjustMoveType('RESET')">
-						初始化
-					</button>
 				</div>
 			</div>
 		</div>
@@ -199,10 +180,6 @@ defineProps({
 		default: false,
 	},
 	exitToolPanel: {
-		type: Function,
-		default: () => {},
-	},
-	switchToolPanel: {
 		type: Function,
 		default: () => {},
 	},

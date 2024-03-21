@@ -1,428 +1,359 @@
 <template>
-	<div :class="themeType">
-		<div id="view">
-			<Loading
-				:upperState="loadingMessage.upper"
-				:lowerState="loadingMessage.lower"
-				:loadingProgress="loadingMessage.loadingProgress"
-			/>
-			<Dialog
-				ref="dialog"
-				:showMessage="showMessage"
-				:saveCallBack="() => uploadDataOnline(false)"
-				:submitCallBack="() => uploadDataOnline(true)"
-			/>
-			<div class="view-container">
-				<TopPanel />
-				<div class="main-body-container">
-					<div class="left-panel">
-						<div class="aside-body">
-							<div class="menu-body">
-								<div class="title">
-									<div class="bg model-finetune-icon asidemenu-icon" />
-									<span>细调操作</span>
+	<div id="view">
+		<Loading
+			:upperState="loadingMessage.upper"
+			:lowerState="loadingMessage.lower"
+			:loadingProgress="loadingMessage.loadingProgress"
+		/>
+		<Dialog
+			ref="dialog"
+			:showMessage="showMessage"
+			:saveCallBack="() => uploadDataOnline(false)"
+			:submitCallBack="() => uploadDataOnline(true)"
+		/>
+		<div class="view-container">
+			<TopPanel />
+			<div class="main-body-container">
+				<div class="left-panel">
+					<div class="aside-body">
+						<div class="menu-body">
+							<div class="title">
+								<div class="bg model-finetune-icon asidemenu-icon" />
+								<span>细调操作</span>
+								<div
+									class="bg keyboard-bind icon-keyboard"
+									:class="{ activate: selectKeyBoardEvent === 'bracket' }"
+									@click="switchSelectKeyBoardEvent()"
+								/>
+							</div>
+							<div class="item-title">设置调整步长</div>
+							<div class="item-line">
+								<div class="col-18 adjust-step">
+									<label for="pan-step">平移: </label>
+									<input id="pan-step" type="number" step="0.01" v-model.number="adjustStep" />mm
+								</div>
+							</div>
+							<!-- 2023.2.19更新：选择牙尖/牙底时，将旋转操作隐藏 -->
+							<div class="item-line" v-show="selectedWidget=='bracket'">
+								<div class="col-18 adjust-step">
+									<label for="rot-step">旋转: </label>
+									<input id="rot-step" type="number" step="1.0" v-model.number="adjustAngle" />度
+								</div>
+							</div>
+							<div class="item-title">平移</div>
+							<div class="item-line">
+								<div class="col-24 select-text">
+									<span>
+										<!-- 2023.2.19更新：这里选择移动托槽/牙尖/牙底 -->
+										当前:{{ currentSelectBracketName === "" ? "未选择" : currentSelectBracketName }}
+										<select name="adjustButton" id="adjustButton" v-model="selectedWidget" v-show="currentSelectBracketName">
+											<option value="bracket">托槽</option>
+											<option value="startPoint">牙尖</option>
+											<option value="endPoint">牙底</option>
+										</select>
+									</span>
+									<div class="adjust-button" @click="adjustButtonClick('RESETSINGLE')">
+										重置
+									</div>
+								</div>
+							</div>
+							<div class="item-line">
+								<div class="col-8" />
+								<div class="col-8">
+									<div class="adjust-button" @click="adjustButtonClick('UP')">
+										<div class="orient-text">
+											<div class="up-text" />
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="item-line">
+								<div class="col-8">
+									<div class="adjust-button" @click="adjustButtonClick('LEFT')">
+										<div class="orient-text">
+											<div class="left-text" />
+										</div>
+									</div>
+								</div>
+								<div class="col-8">
+									<div class="adjust-button" @click="adjustButtonClick('DOWN')">
+										<div class="orient-text">
+											<div class="down-text" />
+										</div>
+									</div>
+								</div>
+								<div class="col-8">
+									<div class="adjust-button" @click="adjustButtonClick('RIGHT')">
+										<div class="orient-text">
+											<div class="right-text" />
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="item-title" v-show="selectedWidget=='bracket'">旋转</div>
+							<div class="item-line" v-show="selectedWidget=='bracket'">
+								<div class="col-3" />
+								<div class="col-8">
+									<div class="adjust-button" @click="adjustButtonClick('ANTI')">
+										<div class="orient-text">
+											<div class="anti-text" />
+											<div class="keybind-text" :class="{ show: isKeyBoardEventSelected }">
+												z
+											</div>
+										</div>
+									</div>
+								</div>
+								<div class="col-3" />
+								<div class="col-8">
+									<div class="adjust-button" @click="adjustButtonClick('ALONG')">
+										<div class="orient-text">
+											<div class="along-text" />
+											<div class="keybind-text" :class="{ show: isKeyBoardEventSelected }">
+												c
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="title">
+								<div class="bg model-finetune-icon asidemenu-icon" />
+								<span>模拟矫正</span>
+							</div>
+							<div
+								class="item-line"
+								:class="{ hide: arrangeShowState.isShow || currentMode.straightenSimulation }"
+							>
+								<div class="col-8" />
+								<div class="col-8">
+									<div class="adjust-button" @click="updateCurrentMode('straightenSimulation', true)">
+										<div class="orient-text">进入</div>
+									</div>
+								</div>
+								<div class="col-8" />
+							</div>
+							<div
+								class="item-line item-title"
+								:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
+							>
+								移动对象
+							</div>
+							<div
+								class="item-line"
+								:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
+							>
+								<div class="col-3" />
+								<div class="col-8">
 									<div
-										class="bg keyboard-bind icon-keyboard"
-										:class="{ activate: selectKeyBoardEvent === 'bracket' }"
-										@click="switchSelectKeyBoardEvent()"
-									/>
-								</div>
-								<div class="item-title">设置调整步长</div>
-								<div class="item-line">
-									<!-- 使用v-if来切换主题 -->
-									<div class="col-18 adjust-step" v-if="themeType=='origin'">
-										<label for="pan-step">平移: </label>
-										<input id="pan-step" type="number" step="0.01" v-model.number="adjustStep" />mm
-									</div>
-									<div class="col-18 adjust-step" v-if="themeType=='new'">
-										<label for="pan-step">平移: </label>
-										<el-input-number
-											id="pan-step"
-											v-model.number="adjustStep"
-											:step="0.01"
-											controls-position="right"
-										/>
-										<span class="unit-text">mm</span>
+										class="adjust-button"
+										:class="{ activate: simMode === 'simToothFix' }"
+										@click="updateSimMode('simToothFix')"
+									>
+										托槽
 									</div>
 								</div>
-								<div class="item-line">
-									<div class="col-18 adjust-step" v-if="themeType=='origin'">
-										<label for="rot-step">旋转: </label>
-										<input id="rot-step" type="number" step="1.0" v-model.number="adjustAngle" />度
-									</div>
-									<div class="col-18 adjust-step" v-if="themeType=='new'">
-										<label for="rot-step">旋转: </label>
-										<el-input-number
-											id="rot-step"
-											v-model.number="adjustAngle"
-											:step="1.0"
-											controls-position="right"
-										/>
-										<span class="unit-text">度</span>
+								<div class="col-3" />
+								<div class="col-8">
+									<div
+										class="adjust-button"
+										:class="{ activate: simMode === 'simBracketFix' }"
+										@click="updateSimMode('simBracketFix')"
+									>
+										牙齿
 									</div>
 								</div>
-								<div class="item-title">平移</div>
-								<div class="item-line">
-									<div class="col-24 select-text">
-										<span>
-											当前:{{ currentSelectBracketName === "" ? "未选择" : currentSelectBracketName }}
-										</span>
-										<div class="adjust-button" @click="adjustButtonClick('RESETSINGLE')">
-											重置
-										</div>
+							</div>
+							<div
+								class="item-line item-title"
+								:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
+							>
+								操作
+							</div>
+							<div
+								class="item-line"
+								:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
+							>
+								<div class="col-3" />
+								<div class="col-8">
+									<div class="adjust-button" @click="simForceUpdate()">
+										<div class="orient-text">更新</div>
 									</div>
 								</div>
-								<div class="item-line">
-									<div class="col-8" />
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('UP')">
-											<div class="orient-text">
-												<div class="up-text" />
-											</div>
-										</div>
+								<div class="col-3" />
+								<div class="col-8">
+									<div
+										class="adjust-button"
+										@click="updateCurrentMode('straightenSimulation', false)"
+									>
+										<div class="orient-text">退出</div>
 									</div>
 								</div>
-								<div class="item-line">
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('LEFT')">
-											<div class="orient-text">
-												<div class="left-text" />
-											</div>
-										</div>
-									</div>
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('DOWN')">
-											<div class="orient-text">
-												<div class="down-text" />
-											</div>
-										</div>
-									</div>
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('RIGHT')">
-											<div class="orient-text">
-												<div class="right-text" />
-											</div>
-										</div>
-									</div>
-								</div>
-								<div class="item-title">旋转</div>
-								<div class="item-line">
-									<div class="col-3" />
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('ANTI')">
-											<div class="orient-text">
-												<div class="anti-text" />
-												<div class="keybind-text" :class="{ show: isKeyBoardEventSelected }">
-													z
-												</div>
-											</div>
-										</div>
-									</div>
-									<div class="col-3" />
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('ALONG')">
-											<div class="orient-text">
-												<div class="along-text" />
-												<div class="keybind-text" :class="{ show: isKeyBoardEventSelected }">
-													c
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-								<div class="item-title" v-if="hasRotateInfo&&currentMode.straightenSimulation">转矩</div>
-								<div class="item-line"  v-if="hasRotateInfo&&currentMode.straightenSimulation">
-									<div class="col-3" />
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('XANTI')">
-											<div class="orient-text">
-												<div class="anti-text" />
-												<div class="keybind-text" :class="{ show: isKeyBoardEventSelected }">
-													z
-												</div>
-											</div>
-										</div>
-									</div>
-									<div class="col-3" />
-									<div class="col-8">
-										<div class="adjust-button" @click="adjustButtonClick('XALONG')">
-											<div class="orient-text">
-												<div class="along-text" />
-												<div class="keybind-text" :class="{ show: isKeyBoardEventSelected }">
-													c
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-								<div class="title">
-									<div class="bg model-finetune-icon asidemenu-icon" />
-									<span>模拟矫正</span>
-								</div>
-								<div
-									class="item-line"
-									:class="{ hide: arrangeShowState.isShow || currentMode.straightenSimulation }"
-								>
-									<div class="col-8" />
-									<div class="col-8">
-										<div class="adjust-button" @click="updateCurrentMode('straightenSimulation', true)">
-											<div class="orient-text">进入</div>
-										</div>
-									</div>
-									<div class="col-8" />
-								</div>
-								<div
-									class="item-line item-title"
-									:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
-								>
-									移动对象
-								</div>
-								<div
-									class="item-line"
-									:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
-								>
-									<div class="col-3" />
-									<div class="col-8">
-										<div
-											class="adjust-button"
-											:class="{ activate: simMode === 'simToothFix' }"
-											@click="updateSimMode('simToothFix')"
-										>
-											托槽
-										</div>
-									</div>
-									<div class="col-3" />
-									<div class="col-8">
-										<div
-											class="adjust-button"
-											:class="{ activate: simMode === 'simBracketFix' }"
-											@click="updateSimMode('simBracketFix')"
-										>
-											牙齿
-										</div>
-									</div>
-								</div>
-								<div
-									class="item-line item-title"
-									:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
-								>
-									操作
-								</div>
-								<div
-									class="item-line"
-									:class="{ hide: arrangeShowState.isShow || !currentMode.straightenSimulation }"
-								>
-									<div class="col-3" />
-									<div class="col-8">
-										<div class="adjust-button" @click="simForceUpdate()">
-											<div class="orient-text">更新</div>
-										</div>
-									</div>
-									<div class="col-3" />
-									<div class="col-8">
-										<div
-											class="adjust-button"
-											@click="updateCurrentMode('straightenSimulation', false)"
-										>
-											<div class="orient-text">退出</div>
-										</div>
-									</div>
-								</div>
-								<div
-									class="item-detail-line"
-									:class="{ hide: !isActorLoadedFinish.upper || arrangeMessage.upper === '' }"
-								>
-									<span>{{ arrangeMessage.upper }}</span>
-								</div>
-								<div
-									class="item-detail-line"
-									:class="{ hide: !isActorLoadedFinish.lower || arrangeMessage.lower === '' }"
-								>
-									<span>{{ arrangeMessage.lower }}</span>
-								</div>
-								<div class="item-line" :class="{ hide: !arrangeShowState.isShow }">
-									<div class="col-24">正在排牙中......</div>
-								</div>
-								<div>
-									<div class="check-toggle" @click="toggleDataSaveCheckbox()" v-if="userInfo.isRollBackAuthorized">
-										<input type="checkbox" :checked="isAnyDataCheckable" class="model-save-checkbox"/>
-										<span>方案已确认</span>
-									</div>
-									<div class="title clickable" @click="dialog.changeDialogShowState('dataSave', true)">
-										<div class="bg model-save-online-icon asidemenu-icon" />
-										<span>方案在线保存</span>
-									</div>
-								</div>
-								<div class="title clickable" @click="dialog.changeDialogShowState('dataSubmit', true)">
-									<div class="bg model-save-online-icon asidemenu-icon" />
-									<span>方案在线递交</span>
-								</div>
-								<div
-									class="title clickable"
-									@click="rollbackCheckedData()"
-									v-if="userInfo.isRollBackAuthorized"
-								>
-									<div class="bg model-save-online-icon asidemenu-icon" />
-									<span>递交方案撤回</span>
-								</div>
-								<div class="item-detail-line wrap" :class="{ hide: isBracketDataMatchMessage === '' }">
-									<span>{{ isBracketDataMatchMessage }}</span>
-								</div>
+							</div>
+							<div
+								class="item-detail-line"
+								:class="{ hide: !isActorLoadedFinish.upper || arrangeMessage.upper === '' }"
+							>
+								<span>{{ arrangeMessage.upper }}</span>
+							</div>
+							<div
+								class="item-detail-line"
+								:class="{ hide: !isActorLoadedFinish.lower || arrangeMessage.lower === '' }"
+							>
+								<span>{{ arrangeMessage.lower }}</span>
+							</div>
+							<div class="item-line" :class="{ hide: !arrangeShowState.isShow }">
+								<div class="col-24">正在排牙中......</div>
+							</div>
+							<div class="title clickable" @click="dialog.changeDialogShowState('dataSave', true)">
+								<div class="bg model-save-online-icon asidemenu-icon" />
+								<span>方案在线保存</span>
+							</div>
+							<div class="title clickable" @click="dialog.changeDialogShowState('dataSubmit', true)">
+								<div class="bg model-save-online-icon asidemenu-icon" />
+								<span>方案在线递交</span>
+							</div>
+							<div
+								class="title clickable"
+								@click="rollbackCheckedData()"
+								v-if="userInfo.isRollBackAuthorized"
+							>
+								<div class="bg model-save-online-icon asidemenu-icon" />
+								<span>递交方案撤回</span>
+							</div>
+							<div class="item-detail-line wrap" :class="{ hide: isBracketDataMatchMessage === '' }">
+								<span>{{ isBracketDataMatchMessage }}</span>
 							</div>
 						</div>
 					</div>
-					<el-main class="view-vtk-main">
-						<el-container class="vtk-view-container">
-							<el-aside width="100%" class="view-aside-menu">
-								<el-button-group class="model-buttonGroup">
-									<el-button
-										size="small"
-										@click="actorInScene.upper = !actorInScene.upper"
-										:disabled="!isActorLoadedFinish.upper"
-									>
-										<div
-											class="bg"
-											:class="[
-												actorInScene.upper ? 'show-upper-teeth-icon' : 'hide-upper-teeth-icon',
-												{ disabled: !isActorLoadedFinish.upper },
-											]"
-										/>
-									</el-button>
-									<el-button
-										size="small"
-										@click="actorInScene.lower = !actorInScene.lower"
-										:disabled="!isActorLoadedFinish.lower"
-									>
-										<div
-											class="bg"
-											:class="[
-												actorInScene.lower ? 'show-lower-teeth-icon' : 'hide-lower-teeth-icon',
-												{ disabled: !isActorLoadedFinish.lower },
-											]"
-										/>
-									</el-button>
-								</el-button-group>
-								<el-button-group class="buttonGroup">
-									<el-button
-										size="small"
-										@click="resetViewDirection('LEFT')"
-										:disabled="!actorInScene.upper && !actorInScene.lower"
-									>
-										<div
-											class="left-orient-icon bg"
-											:class="{ disabled: !actorInScene.upper && !actorInScene.lower }"
-										/>
-									</el-button>
-									<el-button
-										size="small"
-										@click="resetViewDirection('FRONT')"
-										:disabled="!actorInScene.upper && !actorInScene.lower"
-									>
-										<div
-											class="front-orient-icon bg"
-											:class="{ disabled: !actorInScene.upper && !actorInScene.lower }"
-										/>
-									</el-button>
-									<el-button
-										size="small"
-										@click="resetViewDirection('RIGHT')"
-										:disabled="!actorInScene.upper && !actorInScene.lower"
-									>
-										<div
-											class="right-orient-icon bg"
-											:class="{ disabled: !actorInScene.upper && !actorInScene.lower }"
-										/>
-									</el-button>
-								</el-button-group>
-								<el-button-group class="teeth-buttonGroup">
-									<el-button
-										size="small"
-										@click="changeBracketArchShowState()"
-										:disabled="!isActorLoadedFinish.upper && !isActorLoadedFinish.lower"
-									>
-										<div
-											class="bg"
-											:class="{
-												'show-bracket-arch-icon': actorInScene.arch === 0,
-												'show-arch-icon': actorInScene.arch === 1,
-												'show-bracket-icon': actorInScene.arch === 2,
-												'hide-bracket-icon': actorInScene.arch === 3,
-												'disabled': !isActorLoadedFinish.upper && !isActorLoadedFinish.lower,
-											}"
-										/>
-									</el-button>
-									<el-button
-										size="small"
-										@click="actorInScene.teethWithGingiva = (actorInScene.teethWithGingiva + 1) % 2"
-										:disabled="
-											(!isActorLoadedFinish.upper && !isActorLoadedFinish.lower) ||
-												currentMode.straightenSimulation
-										"
-									>
-										<div
-											class="bg"
-											:class="{
-												'show-teeth-gingiva-icon': actorInScene.teethWithGingiva === 0,
-												'show-teeth-icon': actorInScene.teethWithGingiva === 1,
-												'show-gingiva-icon': actorInScene.teethWithGingiva === 2,
-												'disabled': !isActorLoadedFinish.upper && !isActorLoadedFinish.lower,
-											}"
-										/>
-									</el-button>
-									<el-button
-										size="small"
-										@click="actorInScene.axis = !actorInScene.axis"
-										:disabled="!isActorLoadedFinish.upper && !isActorLoadedFinish.lower"
-									>
-										<div
-											class="bg"
-											:class="[
-												actorInScene.axis ? 'show-axis-icon' : 'hide-axis-icon',
-												{ disabled: !isActorLoadedFinish.upper && !isActorLoadedFinish.lower },
-											]"
-										/>
-									</el-button>
-									<!-- 2023.4.12更新：用于隐藏/显示原始牙列 -->
-									<!-- 2023.10.13更新：如果没有转矩信息则不需要显示该按钮 -->
-									<el-button
-										size="small"
-										@click="changeOriginToothShowState()"
-										:disabled="
-											(!isActorLoadedFinish.upper && !isActorLoadedFinish.lower) ||
-												!currentMode.straightenSimulation
-										"
-										v-if=hasRotateInfo
-									>
-										<div
-											class="bg"
-											:class="{
-												'hide-origin-icon': originShowStateFlag === 0,
-												'show-origin-icon': originShowStateFlag === 1,
-												'hide-originGingiva-icon': originShowStateFlag === 2,
-												'disabled': !isActorLoadedFinish.upper && !isActorLoadedFinish.lower,
-											}"
-										/>
-									</el-button>
-								</el-button-group>
-								<div class="slider-block" v-if="originShowStateFlag!=0">
-									<el-slider v-model="toothOpacity" />
-								</div>
-								<ViewerMain
-									ref="viewerMain"
-									:actorInScene="actorInScene"
-									:changeLoadingMessage="changeLoadingMessage"
-								/>
-							</el-aside>
-						</el-container>
-					</el-main>
 				</div>
+				<el-main class="view-vtk-main">
+					<el-container class="vtk-view-container">
+						<el-aside width="100%" class="view-aside-menu">
+							<el-button-group class="model-buttonGroup">
+								<el-button
+									size="small"
+									@click="actorInScene.upper = !actorInScene.upper"
+									:disabled="!isActorLoadedFinish.upper"
+								>
+									<div
+										class="bg"
+										:class="[
+											actorInScene.upper ? 'show-upper-teeth-icon' : 'hide-upper-teeth-icon',
+											{ disabled: !isActorLoadedFinish.upper },
+										]"
+									/>
+								</el-button>
+								<el-button
+									size="small"
+									@click="actorInScene.lower = !actorInScene.lower"
+									:disabled="!isActorLoadedFinish.lower"
+								>
+									<div
+										class="bg"
+										:class="[
+											actorInScene.lower ? 'show-lower-teeth-icon' : 'hide-lower-teeth-icon',
+											{ disabled: !isActorLoadedFinish.lower },
+										]"
+									/>
+								</el-button>
+							</el-button-group>
+							<el-button-group class="buttonGroup">
+								<el-button
+									size="small"
+									@click="resetViewDirection('LEFT')"
+									:disabled="!actorInScene.upper && !actorInScene.lower"
+								>
+									<div
+										class="left-orient-icon bg"
+										:class="{ disabled: !actorInScene.upper && !actorInScene.lower }"
+									/>
+								</el-button>
+								<el-button
+									size="small"
+									@click="resetViewDirection('FRONT')"
+									:disabled="!actorInScene.upper && !actorInScene.lower"
+								>
+									<div
+										class="front-orient-icon bg"
+										:class="{ disabled: !actorInScene.upper && !actorInScene.lower }"
+									/>
+								</el-button>
+								<el-button
+									size="small"
+									@click="resetViewDirection('RIGHT')"
+									:disabled="!actorInScene.upper && !actorInScene.lower"
+								>
+									<div
+										class="right-orient-icon bg"
+										:class="{ disabled: !actorInScene.upper && !actorInScene.lower }"
+									/>
+								</el-button>
+							</el-button-group>
+							<el-button-group class="teeth-buttonGroup">
+								<el-button
+									size="small"
+									@click="changeBracketArchShowState()"
+									:disabled="!isActorLoadedFinish.upper && !isActorLoadedFinish.lower"
+								>
+									<div
+										class="bg"
+										:class="{
+											'show-bracket-arch-icon': actorInScene.arch === 0,
+											'show-arch-icon': actorInScene.arch === 1,
+											'show-bracket-icon': actorInScene.arch === 2,
+											'hide-bracket-icon': actorInScene.arch === 3,
+											'disabled': !isActorLoadedFinish.upper && !isActorLoadedFinish.lower,
+										}"
+									/>
+								</el-button>
+								<el-button
+									size="small"
+									@click="actorInScene.teethWithGingiva = (actorInScene.teethWithGingiva + 1) % 2"
+									:disabled="
+										(!isActorLoadedFinish.upper && !isActorLoadedFinish.lower) ||
+											currentMode.straightenSimulation
+									"
+								>
+									<div
+										class="bg"
+										:class="{
+											'show-teeth-gingiva-icon': actorInScene.teethWithGingiva === 0,
+											'show-teeth-icon': actorInScene.teethWithGingiva === 1,
+											'show-gingiva-icon': actorInScene.teethWithGingiva === 2,
+											'disabled': !isActorLoadedFinish.upper && !isActorLoadedFinish.lower,
+										}"
+									/>
+								</el-button>
+								<el-button
+									size="small"
+									@click="actorInScene.axis = !actorInScene.axis"
+									:disabled="!isActorLoadedFinish.upper && !isActorLoadedFinish.lower"
+								>
+									<div
+										class="bg"
+										:class="[
+											actorInScene.axis ? 'show-axis-icon' : 'hide-axis-icon',
+											{ disabled: !isActorLoadedFinish.upper && !isActorLoadedFinish.lower },
+										]"
+									/>
+								</el-button>
+							</el-button-group>
+							<ViewerMain
+								ref="viewerMain"
+								:actorInScene="actorInScene"
+								:changeLoadingMessage="changeLoadingMessage"
+								:selectedWidget="selectedWidget"
+								:resetSelectedWidget="resetSelectedWidget"
+							/>
+						</el-aside>
+					</el-container>
+				</el-main>
 			</div>
 		</div>
 	</div>
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed, getCurrentInstance, onMounted, toRaw, provide } from "vue";
+import { ref, reactive, watch, computed, getCurrentInstance, onMounted, toRaw } from "vue";
 import { useStore } from "vuex";
 import TopPanel from "../components/TopPanel";
 import ViewerMain from "../components/ViewerComponent/ViewerMain";
@@ -463,23 +394,18 @@ const viewerMain = ref(null);
 const store = useStore();
 const loadedBracketNameList = store.state.userHandleState.bracketNameList;
 const uploadType = computed(() => store.getters["userHandleState/uploadType"]);
-// 2023.10.16更新：由于要求不同的用户使用不同的样式主题，这里使用themeType来控制，themeType在请求用户信息时保存到vuex
-const themeType = computed(() => store.state.userHandleState.themeType);
 const isUploading = computed(() => store.getters["userHandleState/isUploading"]);
-const hasAnyDataSubmit = computed(() => store.getters["userHandleState/hasAnyDataSubmit"]); 
+const hasAnyDataSubmit = computed(() => store.getters["userHandleState/hasAnyDataSubmit"]);
 
 const userInfo = computed(() => {
 	return {
+		// isRollBackAuthorized: true, // 是否允许该用户撤回方案(只有管理员能够撤回)
 		isRollBackAuthorized: store.state.userHandleState.userType === "MANAGER", // 是否允许该用户撤回方案(只有管理员能够撤回)
 	};
 });
 const currentMode = computed(() => store.state.actorHandleState.currentMode);
 const fineTuneMode = computed(() => store.getters["actorHandleState/fineTuneMode"]);
 const simMode = computed(() => store.state.actorHandleState.simMode);
-const toothOpacity = computed({
-      get: () => store.state.actorHandleState.toothOpacity,
-      set: (value) => store.dispatch("actorHandleState/setToothOpacity", value),
-    })
 function updateSimMode(value) {
 	store.dispatch("actorHandleState/updateSimMode", value);
 }
@@ -501,8 +427,19 @@ watch(fineTuneMode, (newVal, oldVal) => {
 		viewerMain.value.applyUserMatrixWhenSwitchMode(oldVal, newVal, true);
 	}
 });
-let adjustStep = ref(0.1);
-let adjustAngle = ref(1.0);
+let adjustStep = ref(0.2);
+let adjustAngle = ref(3.0);
+let selectedWidget = ref('bracket');
+//2023.3.8更新：通过props的方式，切换托槽时重置下拉菜单。
+function resetSelectedWidget(){
+	selectedWidget.value = 'bracket';
+	//将小球全部deactive
+	viewerMain.value.setHandleActive('bracket')
+}
+
+watch(selectedWidget,(newVal, oldVal) =>{
+	viewerMain.value.setHandleActive(newVal)
+})
 
 let uploadStateMessage = {
 	upper: {
@@ -549,17 +486,12 @@ let loadingMessage = reactive({
 	loadingProgress: "-/-",
 });
 
+
 const arrangeShowState = computed(() => store.getters["userHandleState/arrangeShowState"]);
 
 let actorInScene = reactive({
 	upper: false, // 全上颌牙显示/隐藏
-	upperOrigin: false, // 上颌牙原始牙列显示/隐藏
-	upperOriginBracket: false, // 上颌牙原始托槽显示/隐藏
-	upperOriginGingiva: false,
 	lower: false, // 全下颌牙显示/隐藏
-	lowerOrigin: false, // 下颌牙原始牙列显示/隐藏
-	lowerOriginBracket: false, // 下颌牙原始托槽显示/隐藏
-	lowerOriginGingiva: false,
 	teethWithGingiva: 1, // 牙齿+牙龈0/牙齿1
 	axis: false, // 坐标轴显示/隐藏
 	arch: 2, // 牙弓线显示01/隐藏23, 托槽显示02/隐藏13
@@ -572,8 +504,8 @@ const isArrangeConditionSatisfy = computed(() => store.getters["userHandleState/
 let arrangeMessage = computed(() => {
 	// 排牙条件: 托槽总数多于5个 && 托槽左边右边至少各有1个 && 2对s
 	return {
-		upper: isArrangeConditionSatisfy.value.upper ? "" : "注：上颌牙托槽不满足排牙条件",
-		lower: isArrangeConditionSatisfy.value.lower ? "" : "注：下颌牙托槽不满足排牙条件",
+		upper: isArrangeConditionSatisfy.value.upper ? "" : "注：上颌牙托槽不满足排牙条件，不会进行排牙",
+		lower: isArrangeConditionSatisfy.value.lower ? "" : "注：下颌牙托槽不满足排牙条件，不会进行排牙",
 	};
 });
 const isBracketDataMatchTeethType = computed(() => store.getters["userHandleState/isBracketDataMatchTeethType"]);
@@ -586,12 +518,14 @@ let isActorLoadedFinish = store.state.userHandleState.loadedTeethType;
 watch(isActorLoadedFinish, () => {
 	// Actor初次加载成功后直接渲染
 	if (isActorLoadedFinish.upper) {
+		// console.log("发现上颌牙Actor加载成功");
 		actorInScene.upper = true;
 		actorInScene.teethWithGingiva = 0;
 		actorInScene.axis = true;
 		actorInScene.arch = 0;
 	}
 	if (isActorLoadedFinish.lower) {
+		// console.log("发现下颌牙Actor加载成功");
 		actorInScene.lower = true;
 		actorInScene.teethWithGingiva = 0;
 		actorInScene.axis = true;
@@ -600,8 +534,9 @@ watch(isActorLoadedFinish, () => {
 	if (!currentMode.value.fineTune) {
 		// 进入细调, 开启托槽选择
 		updateCurrentMode("fineTune", true);
-		// 2023.1.5更新：不需要直接进入排牙
 		// 是否满足排牙条件, 是的话直接进入排牙
+		// 2023.1.5更新：不需要直接进入排牙
+		// Object.keys(state.teethArrange.arrangeMatrix).length > 0;
 		// if (store.getters["actorHandleState/isArrangeDataComplete"]) {
 		// 	updateCurrentMode("straightenSimulation", true);
 		// }
@@ -766,7 +701,7 @@ function adjustButtonClick(moveType) {
 		moveStep: 0,
 		moveType,
 	};
-	if (moveType.includes("ALONG") || moveType.includes("ANTI")) {
+	if (moveType === "ANTI" || moveType === "ALONG") {
 		// 旋转
 		option.moveStep = adjustAngle.value;
 	} else {
@@ -783,7 +718,12 @@ function adjustButtonClick(moveType) {
 	if (!isBracketDataMatchTeethType.value) {
 		option.moveStep = -option.moveStep;
 	}
-	viewerMain.value.fineTuneBracket(option);
+	// 2023.2.19更新：如果选中的是托槽，则移动托槽
+	if(selectedWidget.value=='bracket'){
+		viewerMain.value.fineTuneBracket(option);
+	}else{
+		viewerMain.value.adjustButtonMoveWidget(option, selectedWidget.value, currentMode.value.straightenSimulation);
+	}
 }
 function showMessage(message, type) {
 	proxy.$message({
@@ -806,15 +746,7 @@ function uploadDataOnline(submit = false) {
 		});
 		return;
 	}
-	// 保存数据请求
 	viewerMain.value.uploadDataOnline(uploadStateMessage, submit);
-	// 方案确认状态修改请求
-	// 2023.11.21更新：修改为上下颌都成功保存后再调用
-	// viewerMain.value.setDataCheckable()
-	// 如果是递交，调用舒雅医生方案审核通知接口
-	// if (submit){
-	// 	viewerMain.value.suyaDoctorAudit()
-	// }
 }
 
 function changeBracketArchShowState() {
@@ -826,57 +758,6 @@ function changeBracketArchShowState() {
 	actorInScene.arch = nextState;
 }
 
-let originShowStateFlag = ref(0);
-/**
- * @description: 使用originShowStateFlag来控制原始牙列的显示状态：
- * 0：调整为全部显示
- * 1：不显示牙龈
- * 2：全部不显示
- * @return {*}
- * @author: ZhuYichen
- */
-function changeOriginToothShowState(){
-	switch(originShowStateFlag.value) {
-		case 0: 
-			actorInScene.upperOrigin=true;
-			actorInScene.lowerOrigin=true;
-			actorInScene.upperOriginBracket = true;
-			actorInScene.lowerOriginBracket = true;
-			actorInScene.upperOriginGingiva = true;
-			actorInScene.lowerOriginGingiva = true;
-			break;
-		case 1:
-			actorInScene.upperOrigin=true;
-			actorInScene.lowerOrigin=true;
-			actorInScene.upperOriginBracket = true;
-			actorInScene.lowerOriginBracket = true;
-			actorInScene.upperOriginGingiva = false;
-			actorInScene.lowerOriginGingiva = false;
-			break;
-		case 2:
-			actorInScene.upperOrigin=false;
-			actorInScene.lowerOrigin=false;
-			actorInScene.upperOriginBracket = false;
-			actorInScene.lowerOriginBracket = false;
-			actorInScene.upperOriginGingiva = false;
-			actorInScene.lowerOriginGingiva = false;
-			break;
-	}
-	originShowStateFlag.value += 1;
-	originShowStateFlag.value %= 3;
-}
-
-/**
- * @description: 用于在退出排牙时，将状态重置
- * @return {*}
- * @author: ZhuYichen
- */
-function resetOriginShowStateFlag(){
-	originShowStateFlag.value = 0;
-}
-
-provide('resetOriginShowStateFlag', resetOriginShowStateFlag)
-
 function rollbackCheckedData() {
 	if (!hasAnyDataSubmit.value) {
 		proxy.$message({
@@ -887,63 +768,706 @@ function rollbackCheckedData() {
 	}
 	viewerMain.value.rollbackCheckedData();
 }
-
-const showAndHide = ()=>{
-	actorInScene.upperOrigin = false
-	actorInScene.lowerOrigin = false
-	actorInScene.upperOriginBracket = false
-	actorInScene.lowerOriginBracket = false
-	actorInScene.upperOriginGingiva = false
-	actorInScene.lowerOriginGingiva = false
-	actorInScene.upper = false
-	actorInScene.lower = false
-	setTimeout(() => {
-		actorInScene.upper = true
-		actorInScene.lower = true
-	}, 0);
-}
-provide('showAndHide', showAndHide)
-
-const hasRotateInfo = ref(false);
-/**
- * @description: 在ViewerMain中监视到有转矩信息后，将转矩按钮改为可见
- * @return {*}
- * @author: ZhuYichen
- */
-const showRotateButton = ()=>{
-	hasRotateInfo.value=true;
-}
-provide('showRotateButton', showRotateButton)
-
-const isAnyDataCheckable = computed(() => store.getters["userHandleState/isAnyDataCheckable"]); 
-
-/**
- * @description: 修改checkable的状态，表明本次保存是否是已确认的
- * @return {*}
- * @author: ZhuYichen
- */
-function toggleDataSaveCheckbox(){
-	const flag = !isAnyDataCheckable.value
-	for(let teethType of ['upper', 'lower']){
-		store.dispatch("userHandleState/updateDataCheckableState", {
-			teethType,
-			value: flag,
-		});
-	}
-}
-
 </script>
 
 <style lang="scss" scoped>
-.origin {
-	@import './viewerStyle.scss';
-	height:100%;
-	display:contents;
+$container-width: 940px;
+$container-height: 865px;
+$left-panel-width-normal: 210px;
+$trans-time: 0.2s;
+$view-head-height: 66px;
+$title-line-height: 50px;
+$item-title-height: 35px;
+$item-line-height: 40px;
+$progress-line-height: 20px;
+$btn-width: 50px;
+$btn-height: 30px;
+
+@function widthCol($n) {
+	@return $n/24 * 100%;
 }
-.new {
-	@import './viewerStyle2.scss';
-	height:100%;
-	display:contents;
+
+#view {
+	width: 100%;
+	height: 100%;
+	background-color: ivory;
+	font-family: "微软雅黑";
+}
+.view-container {
+	width: 100%;
+	height: 100%;
+	min-width: $container-width;
+	min-height: $container-height;
+	overflow: auto;
+	.main-body-container {
+		height: calc(100% - $view-head-height);
+		overflow: hidden;
+		position: relative;
+		.left-panel {
+			transition: $trans-time;
+			width: $left-panel-width-normal;
+			height: 100%;
+			position: absolute;
+			top: 0;
+			left: 0;
+			// z-index: 100;
+			.aside-body {
+				width: 100%;
+				height: 100%;
+				background: #545c64;
+				color: rgb(255, 255, 255);
+				overflow: hidden;
+				user-select: none;
+				transition: 0.2s;
+				visibility: visible;
+				position: absolute;
+
+				.asidemenu-icon {
+					width: 20px;
+					height: 20px;
+					margin-right: 5px;
+					vertical-align: middle;
+					text-align: center;
+					display: inline-flex;
+				}
+
+				.title {
+					padding: 0 $left-panel-width-normal/15;
+					height: $title-line-height;
+					line-height: $title-line-height;
+					font-size: 15px;
+					background-color: rgb(84, 92, 100);
+					position: relative;
+					box-sizing: border-box;
+					span {
+						vertical-align: middle;
+					}
+
+					&:hover {
+						background-color: rgb(67, 74, 80);
+					}
+					&.clickable {
+						cursor: pointer;
+						/*border: transparent 2px solid;*/
+						&:hover {
+							border: rgb(236, 168, 25) 2px solid;
+						}
+					}
+
+					.keyboard-bind {
+						position: absolute;
+						right: $title-line-height * 0.15;
+						top: $title-line-height * 0.15;
+						width: $title-line-height * 0.7;
+						height: $title-line-height * 0.7;
+						border: transparent 2px solid;
+						cursor: pointer;
+						border-radius: 5px;
+						&:hover {
+							border: rgb(236, 168, 25) 2px solid;
+						}
+						&.activate {
+							background-color: #f4f4f4;
+							border: rgb(137, 211, 245) 2px solid;
+						}
+					}
+				}
+
+				.item-title {
+					font-size: 12px;
+					padding-left: $left-panel-width-normal/10;
+					height: $item-title-height;
+					line-height: $item-title-height;
+					color: #909399;
+					transition: $trans-time;
+
+					&:hover {
+						background-color: rgb(80, 87, 95);
+					}
+				}
+
+				.item-line {
+					display: flex;
+					justify-content: flex-start;
+					white-space: nowrap;
+					padding: 0 $left-panel-width-normal/10;
+					height: $item-line-height;
+					line-height: $item-line-height;
+					font-size: 12px;
+					transition: $trans-time;
+
+					&:hover {
+						background-color: rgb(80, 87, 95);
+					}
+					&.hide {
+						height: 0;
+						opacity: 0;
+						visibility: hidden;
+						transform: translate(0, -$item-line-height/2);
+					}
+					&.disabled {
+						pointer-events: none;
+						opacity: 0.6;
+					}
+					.adjust-step {
+						/*text-align: center;*/
+						padding-left: $left-panel-width-normal/15;
+						transition: $trans-time;
+						input {
+							width: 60px;
+							outline: none;
+							text-align: center;
+						}
+					}
+					.adjust-button {
+						width: $btn-width;
+						height: $btn-height;
+						line-height: $btn-height;
+						margin: ($item-line-height - $btn-height - 4px)/2 auto;
+						border: 2px outset rgb(133, 133, 133);
+						cursor: pointer;
+						display: block;
+						border-radius: 3px;
+						background-color: rgb(230, 230, 230);
+						color: black;
+						position: relative;
+						transition: $trans-time;
+						text-align: center;
+						&:hover {
+							background-color: rgb(240, 240, 240);
+						}
+						&:active {
+							background-color: rgb(220, 220, 220);
+						}
+						&.activate {
+							background-color: #f4f4f4;
+							border: rgb(137, 211, 245) 2px solid;
+							&::after {
+								content: "\2714";
+								background: rgb(94, 199, 226);
+								color: white;
+								display: inline-block;
+								font-size: 14px;
+								width: 16px;
+								height: 16px;
+								border-radius: 50%;
+								line-height: 16px;
+							}
+						}
+						&.settings {
+							width: $btn-width * 2.4;
+							margin: ($item-line-height - $btn-height * 0.7 - 4px)/2 auto;
+							height: $btn-height * 0.7;
+							line-height: $btn-height * 0.7;
+						}
+
+						.orient-text {
+							text-align: center;
+							width: $btn-width;
+							height: $btn-height;
+							line-height: $btn-height;
+							position: absolute;
+							left: 0;
+							top: 0;
+							display: flex;
+							justify-content: center;
+							perspective: 800px;
+							perspective-origin: 100% 0;
+							.up-text {
+								border-right: 10px solid transparent;
+								border-left: 10px solid transparent;
+								border-bottom: 17.3px solid rgba(67, 74, 80, 0.9);
+								position: absolute;
+								left: calc($btn-width/2 - 10px);
+								top: calc($btn-height/2 - 17.3px / 2);
+								transition: $trans-time;
+							}
+							.left-text {
+								border-top: 10px solid transparent;
+								border-bottom: 10px solid transparent;
+								border-right: 17.3px solid rgba(67, 74, 80, 0.85);
+								position: absolute;
+								left: calc($btn-width/2 - 17.3px / 2);
+								top: calc($btn-height/2 - 10px);
+								transition: $trans-time;
+							}
+							.down-text {
+								border-right: 10px solid transparent;
+								border-left: 10px solid transparent;
+								border-top: 17.3px solid rgba(67, 74, 80, 0.85);
+								position: absolute;
+								left: calc($btn-width/2 - 10px);
+								top: calc($btn-height/2 - 17.3px / 2);
+								transition: $trans-time;
+							}
+							.right-text {
+								border-top: 10px solid transparent;
+								border-bottom: 10px solid transparent;
+								border-left: 17.3px solid rgba(67, 74, 80, 0.85);
+								position: absolute;
+								left: calc($btn-width/2 - 17.3px / 2);
+								top: calc($btn-height/2 - 10px);
+								transition: $trans-time;
+							}
+							.out-text {
+								border-right: 10px solid transparent;
+								border-left: 10px solid transparent;
+								border-top: 17.3px solid rgba(67, 74, 80, 0.85);
+								position: absolute;
+								left: calc($btn-width/2 - 10px);
+								top: calc($btn-height/2 - 17.3px / 2);
+								transform: scaleY(0.5) skewX(-30deg);
+								transition: $trans-time;
+								&.keybind {
+									opacity: 0;
+									transform: scaleY(0.5) skewX(-30deg) translateY(-5px);
+								}
+							}
+							.in-text {
+								border-right: 10px solid transparent;
+								border-left: 10px solid transparent;
+								border-bottom: 17.3px solid rgba(67, 74, 80, 0.9);
+								position: absolute;
+								left: calc($btn-width/2 - 10px);
+								top: calc($btn-height/2 - 17.3px / 2);
+								transform: scaleY(0.5) skewX(-30deg) translateZ(0);
+								transition: $trans-time;
+								&.keybind {
+									opacity: 0;
+									transform: scaleY(0.5) skewX(-30deg) translateY(-5px);
+								}
+							}
+							.anti-text {
+								position: absolute;
+								transform: scale(2);
+								transition: $trans-time;
+								&::before {
+									content: "\21B6";
+								}
+								&.keybind {
+									opacity: 0;
+									transform: scale(2) translateY(-5px);
+								}
+							}
+							.along-text {
+								position: absolute;
+								transform: scale(2);
+								transition: $trans-time;
+								&::before {
+									content: "\21B7";
+								}
+								&.keybind {
+									opacity: 0;
+									transform: scale(2) translateY(-5px);
+								}
+							}
+							.bg {
+								width: $btn-height;
+								height: $btn-height;
+								transition: $trans-time;
+								&.keybind {
+									opacity: 0;
+									transform: translateY(-5px);
+								}
+							}
+							.keybind-text {
+								position: absolute;
+								font-size: 18px;
+								height: 18px;
+								width: 18px;
+								line-height: 18px;
+								background-color: #e6e6e6;
+								border-radius: 2px;
+								box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+								border: 1px solid #5b6166;
+								transition: $trans-time;
+								top: -8px;
+								left: -6px;
+								opacity: 0;
+								visibility: hidden;
+								&.show {
+									top: -6px;
+									left: -6px;
+									opacity: 1;
+									visibility: visible;
+								}
+							}
+							@media screen and (min--moz-device-pixel-ratio: 0) {
+								.anti-text,
+								.along-text {
+									transform-origin: 50% 60%;
+								}
+							}
+						}
+						&:hover {
+							.up-text {
+								border-bottom-color: rgba(33, 37, 40, 0.95);
+								transform: scale(1.1) translateY(-3px);
+							}
+							.left-text {
+								border-right-color: rgba(33, 37, 40, 0.95);
+								transform: scale(1.1) translateX(-3px);
+							}
+							.down-text {
+								border-top-color: rgba(33, 37, 40, 0.95);
+								transform: scale(1.1) translateY(3px);
+							}
+							.right-text {
+								border-left-color: rgba(33, 37, 40, 0.95);
+								transform: scale(1.1) translateX(3px);
+							}
+							.out-text {
+								transform: scaleY(0.5) skewX(-30deg) translateZ(180px);
+							}
+							.in-text {
+								transform: scaleY(0.5) skewX(-30deg) translateZ(-200px);
+							}
+							.anti-text {
+								transform: scale(2) rotate(-45deg);
+							}
+							.along-text {
+								transform: scale(2) rotate(45deg);
+							}
+						}
+						&:active {
+							.up-text {
+								border-bottom-color: rgba(33, 37, 40, 1);
+								transform: scale(1.1) translateY(-5px);
+							}
+							.left-text {
+								border-right-color: rgba(33, 37, 40, 1);
+								transform: scale(1.1) translateX(-5px);
+							}
+							.down-text {
+								border-top-color: rgba(33, 37, 40, 1);
+								transform: scale(1.1) translateY(5px);
+							}
+							.right-text {
+								border-left-color: rgba(33, 37, 40, 1);
+								transform: scale(1.1) translateX(5px);
+							}
+							.out-text {
+								transform: scaleY(0.5) skewX(-30deg) translateZ(250px);
+							}
+							.in-text {
+								transform: scaleY(0.5) skewX(-30deg) translateZ(-350px);
+							}
+							.anti-text {
+								transform: scale(2) rotate(-60deg);
+							}
+							.along-text {
+								transform: scale(2) rotate(60deg);
+							}
+						}
+					}
+					.col-3 {
+						width: widthCol(3);
+					}
+					.col-5 {
+						width: widthCol(5);
+					}
+					.col-8 {
+						width: widthCol(8);
+					}
+					.col-12 {
+						width: widthCol(12);
+					}
+					.col-18 {
+						width: widthCol(18);
+					}
+					.col-24 {
+						width: widthCol(24);
+						text-align: center;
+					}
+					.select-text {
+						position: relative;
+						font-size: 12px;
+						text-align: center;
+						color: khaki;
+						.adjust-button {
+							position: absolute;
+							top: $btn-height * 0.15;
+							right: -10px;
+							height: $btn-height * 0.7;
+							width: widthCol(4);// 2023.2.19更新：为避免发生遮挡，调整了宽度
+							line-height: $btn-height * 0.7;
+							opacity: 0;
+							visibility: hidden;
+						}
+						&:hover {
+							.adjust-button {
+								opacity: 1;
+								visibility: visible;
+								right: -6px;
+							}
+						}
+					}
+				}
+				.item-detail-line {
+					display: flex;
+					justify-content: flex-start;
+					/*white-space: normal;*/
+					white-space: nowrap;
+					padding: 0 $left-panel-width-normal/15;
+					height: auto;
+					line-height: $item-line-height / 2;
+					font-size: 12px;
+					transition: $trans-time;
+					color: #a8a8a8;
+					&:hover {
+						background-color: rgb(80, 87, 95);
+					}
+					&.hide {
+						height: 0;
+						opacity: 0;
+						visibility: hidden;
+						transform: translate(0, -$item-line-height/2);
+					}
+					span {
+						transition: $trans-time;
+						transform-origin: left;
+					}
+					&.wrap {
+						white-space: normal;
+					}
+				}
+				.tool-tip-detail-line {
+					width: calc(100% - $left-panel-width-normal/15 * 2);
+					display: flex;
+					justify-content: flex-start;
+					white-space: normal;
+					word-break: break-all;
+					padding: 0 $left-panel-width-normal/15;
+					height: auto;
+					line-height: $item-line-height / 2;
+					font-size: 12px;
+					transition: $trans-time;
+					color: #a8a8a8;
+					&:hover {
+						background-color: rgb(80, 87, 95);
+					}
+					span {
+						transition: $trans-time;
+						transform-origin: left;
+					}
+				}
+				.progress-line {
+					white-space: nowrap;
+					padding: 0 $left-panel-width-normal/10;
+					height: $progress-line-height;
+					line-height: $progress-line-height;
+					font-size: 12px;
+					transition: $trans-time;
+
+					&:hover {
+						background-color: rgb(80, 87, 95);
+					}
+					&.hide {
+						height: 0;
+						opacity: 0;
+						visibility: hidden;
+						transform: translate(0, -$item-line-height/2);
+					}
+				}
+			}
+			.bottom-drag-bar {
+				transition: $trans-time;
+				position: absolute;
+				height: 25px;
+				width: 100%;
+				bottom: -22px;
+				cursor: pointer;
+				background: linear-gradient(to right, rgba(128, 128, 128, 0.8) 50%, rgba(128, 128, 128, 0.2) 50%);
+				background-size: 200% 100%;
+				background-position: 100% 0;
+				.drag-icon {
+					position: absolute;
+					top: 0;
+					left: 5px;
+					width: 25px;
+					height: 25px;
+					transition: $trans-time;
+				}
+				&:hover {
+					bottom: 0;
+					background-position: 0 0;
+				}
+				&:active {
+					.drag-icon {
+						transform: translateX(-5px);
+					}
+				}
+				&.reverse {
+					.drag-icon {
+						transform: scaleX(-1);
+					}
+					&:active {
+						.drag-icon {
+							transform: scaleX(-1) translateX(-5px);
+						}
+					}
+				}
+			}
+		}
+		.view-vtk-main {
+			width: calc(100% - $left-panel-width-normal);
+			margin-left: $left-panel-width-normal;
+		}
+		.view-vtk-main {
+			position: relative;
+			height: 100%;
+			padding: 0;
+			background-color: ivory;
+			transition: 0.2s;
+			.vtk-view-container {
+				position: absolute;
+				height: 100%;
+				width: 100%;
+				.view-aside-menu {
+					overflow: hidden;
+				}
+			}
+		}
+	}
+}
+
+.bg {
+	backface-visibility: hidden;
+	background-size: 100% 100%;
+	background-repeat: no-repeat;
+}
+
+.model-buttonGroup {
+	position: absolute;
+	z-index: 100;
+	margin-left: 10px;
+	margin-top: 10px;
+	-webkit-user-drag: none;
+
+	.bg {
+		width: 28px;
+		height: 20px;
+		margin: 2px;
+	}
+}
+
+.buttonGroup {
+	position: absolute;
+	z-index: 100;
+	margin-left: 100px;
+	margin-top: 10px;
+
+	.bg {
+		width: 26px;
+		height: 26px;
+		margin: 2px;
+	}
+}
+
+.teeth-buttonGroup {
+	position: absolute;
+	z-index: 100;
+	margin-left: 230px;
+	margin-top: 10px;
+
+	.bg {
+		width: 26px;
+		height: 26px;
+		margin: 2px;
+	}
+}
+
+.disabled {
+	opacity: 0.2;
+	pointer-events: none;
+}
+.activated {
+	color: #ffd04b;
+	background-color: #434a50;
+}
+.upper-teeth-icon {
+	background-image: url("../assets/Icon_view_upper.png");
+}
+.lower-teeth-icon {
+	background-image: url("../assets/Icon_view_lower.png");
+}
+.show-upper-teeth-icon {
+	background-image: url("../assets/Icon_upper_teeth_show.png");
+}
+.hide-upper-teeth-icon {
+	background-image: url("../assets/Icon_upper_teeth_hide.png");
+}
+.show-lower-teeth-icon {
+	background-image: url("../assets/Icon_lower_teeth_show.png");
+}
+.hide-lower-teeth-icon {
+	background-image: url("../assets/Icon_lower_teeth_hide.png");
+}
+.left-orient-icon {
+	background-image: url("../assets/Icon_view_left.png");
+}
+.front-orient-icon {
+	background-image: url("../assets/Icon_view_front.png");
+}
+.right-orient-icon {
+	background-image: url("../assets/Icon_view_right.png");
+}
+.icon-icon {
+	background-image: url("../assets/Icon_newcase.png");
+}
+.hide-bracket-icon {
+	background-image: url("../assets/Icon_bracket_hide.jpg");
+}
+.show-bracket-icon {
+	background-image: url("../assets/Icon_bracket_show.jpg");
+}
+.show-bracket-arch-icon {
+	background-image: url("../assets/Icon_bracket_arch_show.png");
+}
+.show-arch-icon {
+	background-image: url("../assets/Icon_arch_show.png");
+}
+
+.show-teeth-icon {
+	background-image: url("../assets/Icon_teeth_show.jpg");
+}
+.show-gingiva-icon {
+	background-image: url("../assets/Icon_gingiva_show.png");
+}
+.show-teeth-gingiva-icon {
+	background-image: url("../assets/Icon_teeth_gingiva_show.jpg");
+}
+.icon-keyboard {
+	background-image: url("../assets/Icon_keyboard.png");
+}
+
+.show-axis-icon {
+	background-image: url("../assets/Icon_axis_show.jpg");
+}
+.hide-axis-icon {
+	background-image: url("../assets/Icon_axis_hide.jpg");
+}
+.model-finetune-icon {
+	background-image: url("../assets/Icon_bracket_finetune.png");
+}
+.model-save-online-icon {
+	background-image: url("../assets/Icon_saveOnline.png");
+}
+.icon-index-icon {
+	background-image: url("../assets/Icon_adjust_simulate.png");
 }
 </style>
-
+<style>
+#view .el-checkbox-button__inner {
+	padding: 0 5px;
+}
+#view .model-buttonGroup .el-button {
+	padding: 0 5px;
+}
+#view .buttonGroup .el-button {
+	padding: 0 5px;
+}
+#view .teeth-buttonGroup .el-button {
+	padding: 0 5px;
+}
+</style>

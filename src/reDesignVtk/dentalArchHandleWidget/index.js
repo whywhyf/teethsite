@@ -1,8 +1,8 @@
 import macro from "@kitware/vtk.js/macro";
-import vtkAbstractWidget from "@kitware/vtk.js/Interaction/Widgets/AbstractWidget";
+import vtkAbstractWidget from "@kitware/vtk.js/Widgets/Core/AbstractWidget";
 import vtkSphereLinkHandleRepresentation from "./SphereLinkHandleRepresentation";
-import vtkHandleRepresentation from "@kitware/vtk.js/Interaction/Widgets/HandleRepresentation";
-import Constants from "@kitware/vtk.js/Interaction/Widgets/HandleWidget/Constants";
+import vtkHandleRepresentation from "@kitware/vtk.js/Widgets/Representations/HandleRepresentation";
+import Constants from "../HandleWidget/Constants";
 
 const { VOID, EVENT_ABORT } = macro;
 const { InteractionState } = vtkHandleRepresentation;

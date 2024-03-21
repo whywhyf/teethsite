@@ -2,13 +2,13 @@ import macro from "@kitware/vtk.js/macro";
 import vtkActor from "@kitware/vtk.js/Rendering/Core/Actor";
 import vtkMapper from "@kitware/vtk.js/Rendering/Core/Mapper";
 import vtkCellPicker from "@kitware/vtk.js/Rendering/Core/CellPicker";
-import vtkHandleRepresentation from "@kitware/vtk.js/Interaction/Widgets/HandleRepresentation";
+import vtkHandleRepresentation from "@kitware/vtk.js/Widgets/Representations/HandleRepresentation";
 import { STATIC } from "@kitware/vtk.js/Rendering/Core/InteractorObserver";
 import {
     subtract,
 } from "@kitware/vtk.js/Common/Core/Math";
 import vtkProperty from "@kitware/vtk.js/Rendering/Core/Property";
-import { InteractionState } from "@kitware/vtk.js/Interaction/Widgets/HandleRepresentation/Constants";
+import { InteractionState } from "../HandleRepresentation/Constants";
 import vtkSphereLinkSource from "./SphereLinkSource";
 const { computeDisplayToWorld, computeWorldToDisplay } = STATIC;
 const { throttle } = macro;

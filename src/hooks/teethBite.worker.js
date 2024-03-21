@@ -141,7 +141,7 @@ function computeTeethAutoBiteDistanceZ(
     toothFacesDatas,
     transMatrix
 ) {
-    // console.time('转换耗时')
+    console.time('转换耗时')
     // 构造下颌牙点集
     let numOfLowerToothPoints = 0;
     for (let toothName in toothPointsDatas) {
@@ -177,7 +177,7 @@ function computeTeethAutoBiteDistanceZ(
             }
         }
     }
-    // console.timeEnd('转换耗时') // 7
+    console.timeEnd('转换耗时') // 7
 
     // 计算下颌牙边界框
     let xminL = Infinity,
@@ -199,7 +199,7 @@ function computeTeethAutoBiteDistanceZ(
         }
     });
 
-    // console.time('构造面片耗时')
+    console.time('构造面片耗时')
     // 构造上颌牙面片, 并计算面片的边界框
     // 计算上颌牙全面片数, 并预分配内存给facesOfUpperTeeth
     let numOfFaces = 0;
@@ -227,7 +227,6 @@ function computeTeethAutoBiteDistanceZ(
                 .apply(toothPointValues);
             // 读取面片构造
             faceValues = toothFacesDatas[toothName];
-            console.log(faceValues)
             numOfFaces = faceValues.length / 4;
             for (let fbOffset = 0; fbOffset < numOfFaces; fbOffset++) {
                 point1Offset = faceValues[fbOffset + 1] * 3;
@@ -257,7 +256,7 @@ function computeTeethAutoBiteDistanceZ(
             }
         }
     }
-    // console.timeEnd('构造面片耗时') // 70
+    console.timeEnd('构造面片耗时') // 70
     // 计算上颌牙边界框
     let xminU = Infinity,
         yminU = Infinity,
@@ -299,15 +298,15 @@ function computeTeethAutoBiteDistanceZ(
         return null;
     }
 
-    // console.time('排序耗时')
+    console.time('排序耗时')
     // 根据面片的x和y边界框筛选出对应点, 筛选过程为双循环, 可以简化
     // 上颌牙面片根据xmin排序, 下颌牙点根据x坐标进行排序
     facesOfUpperTeeth.sort((a, b) => a.xmin - b.xmin);
     pointsOfLowerTeeth.sort((a, b) => a[0] - b[0]);
-    // console.timeEnd('排序耗时') // 43
+    console.timeEnd('排序耗时') // 43
 
     // 双重循环, 找出每个面片边界框内的点, 框外一定不重合, 不需要参与计算, 找到的点直接用于计算面片和点之间的距离, 寻找距离最小值
-    // console.time('计算咬合移动距离耗时')
+    console.time('计算咬合移动距离耗时')
     let upperFaceslength = facesOfUpperTeeth.length,
         lowerPointslength = pointsOfLowerTeeth.length,
         filterPointsPart,
@@ -384,7 +383,7 @@ function computeTeethAutoBiteDistanceZ(
         }
         // t[2] += (Date.now() - t1) // 100
     }
-    // console.timeEnd('计算咬合移动距离耗时') // 2400
+    console.timeEnd('计算咬合移动距离耗时') // 2400
     // console.log(`咬合距离: ${minDist}`)
     // console.log('分别耗时', t)
 

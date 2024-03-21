@@ -2006,12 +2006,15 @@ function calculateBracketMoveDist(moveType, step, xNormal, yNormal) {
 /**
  * @description 托槽 顺时针逆时针转轴计算
  * @param moveType 逆时针|顺时针
- * @param normal 托槽法向量
+ * @param zNormal 托槽前后法向量
  */
-function getBracketRotateAxis(moveType, normal) {
-    return moveType.includes('ALONG')? 
-    [-normal[0], -normal[1], -normal[2]]:
-    [normal[0], normal[1], normal[2]]
+function getBracketRotateAxis(moveType, zNormal) {
+    switch (moveType) {
+        case "ALONG": // 顺时针
+            return [-zNormal[0], -zNormal[1], -zNormal[2]];
+        case "ANTI": // 逆时针
+            return [zNormal[0], zNormal[1], zNormal[2]];
+    }
 }
 
 /**
@@ -2083,6 +2086,7 @@ function calculateRigidBodyTransMatrix(center, xNormal, yNormal, zNormal,originC
         originCenter[2]+1, // 左右-xNormal
         
     ]);
+
     let targetPoints = vtkPoints.newInstance(); // 目标点集
 
     targetPoints.setData([
@@ -2140,6 +2144,37 @@ function updateBracketDataByLandMark(
     let transBracketBottomPointValues = new Float32Array(
         bracketBottomPointValues
     );
+    //计算初始center（bounding-box的中心）
+    let xmax=-10000,ymax=-10000,zmax=-10000;
+    let xmin=10000,ymin=10000,zmin=10000;
+    bracketPointValues.forEach((value,index)=>{
+        if (index%3==0){
+            if(value>xmax){
+                xmax = value
+            }
+            if(value<xmin){
+                xmin = value
+            }
+        }
+        else if(index%3==1){
+            if(value>ymax){
+                ymax = value
+            }
+            if(value<ymin){
+                ymin = value
+            }
+        }
+        else{
+            if(value>zmax){
+                zmax = value
+            }
+            if(value<zmin){
+                zmin = value
+            }
+        }
+    })
+    // console.log(name, xmax,xmin,ymax,ymin,zmax,zmin)
+    const originCenter = [(xmax+xmin)/2, (ymax+ymin)/2, (zmax+zmin)/2]
 
     let { center, xNormal, yNormal, zNormal } = actorMatrix;
     // 托槽点集中心+3轴
@@ -2159,6 +2194,7 @@ function updateBracketDataByLandMark(
         transXNormal,
         transYNormal,
         transZNormal,
+        originCenter
     );
     // 对托槽点集应用变换
     vtkMatrixTransTool
@@ -2200,42 +2236,19 @@ function updateBracketDataByLandMark(
         // 对点集应用平移
         pointsTranslateTransform(transBracketPointValues, translate);
     } else {
-        let rotAxis;
-        if(moveType=='ALONG'||moveType=='ANTI'){
-            // 根据zNormal计算旋转轴(zNormal或-zNormal)
-            rotAxis = getBracketRotateAxis(moveType, transZNormal);
-            // 对点集应用旋转
-            pointsRotTransform(
-                transBracketPointValues,
-                transCenter,
-                rotAxis,
-                moveStep
-            );
-            // actorMatrix的角度将随之发生变化(zNormal不变)
-            transXNormal = getRotateNormal(transXNormal, rotAxis, moveStep);
-            transYNormal = getRotateNormal(transYNormal, rotAxis, moveStep);
-        }else if(moveType=='XALONG'||moveType=='XANTI'){
-            rotAxis = getBracketRotateAxis(moveType, transXNormal);
-            // 对点集应用旋转
-            pointsRotTransform(
-                transBracketPointValues,
-                transCenter,
-                rotAxis,
-                moveStep
-            );
-            // actorMatrix的角度将随之发生变化(xNormal不变)
-            transZNormal = getRotateNormal(transZNormal, rotAxis, moveStep);
-            transYNormal = getRotateNormal(transYNormal, rotAxis, moveStep);
-            return {
-                isCrossTheBorder: false,
-                transActorMatrix: {
-                    transCenter, // center不变
-                    transXNormal,
-                    transYNormal,
-                    transZNormal,
-                },
-            };
-        }
+        // 根据zNormal计算旋转轴(zNormal或-zNormal)
+        let rotAxis = getBracketRotateAxis(moveType, transZNormal);
+        // 对点集应用旋转
+        pointsRotTransform(
+            transBracketPointValues,
+            transCenter,
+            rotAxis,
+            moveStep
+        );
+
+        // actorMatrix的角度将随之发生变化(zNormal不变)
+        transXNormal = getRotateNormal(transXNormal, rotAxis, moveStep);
+        transYNormal = getRotateNormal(transYNormal, rotAxis, moveStep);
     }
     // console.log('平移/旋转后', transCenter,transXNormal,transYNormal,transZNormal)
     // console.log('>>初始点集变换 + 平移/旋转后：', Date.now()-t)
@@ -2501,6 +2514,7 @@ function initBracketDataByLandMark(
     xNormal,
     yNormal,
     zNormal,
+    originCenter=[0,0,0]
 ) {
     // ------------------------------------------------------------------------
     // 复制参数 (构造深拷贝)
@@ -2526,6 +2540,7 @@ function initBracketDataByLandMark(
         transXNormal,
         transYNormal,
         transZNormal,
+        originCenter
     );
     // 对托槽点集应用变换
     vtkMatrixTransTool

@@ -457,18 +457,9 @@ export default function(allActorList) {
 						break;
 					case 2:
 						// 保存牙弓线参数
-						console.log(teethType, '保存')
 						store.dispatch("actorHandleState/updateDentalArchSettings", {
 							[teethType]: data.dentalArchSettings,
 						});
-						// 部分情况下(可能是重置或初始化时，记不清了)需要使用DentalArchSettings覆盖DentalArchAdjustRecord
-						if(data.dentalArchSettings.coEfficients){
-							store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
-								[teethType]: {
-									coEfficients: data.dentalArchSettings.coEfficients,
-								},
-							});
-						}
 						currentArrangeStep[teethType] = 3;
 						worker[teethType].postMessage({
 							step: 3,
@@ -592,6 +583,7 @@ export default function(allActorList) {
 				currentArrangeStep[teethType] = 6;
 			}
 		}
+
 		// ------------------------------------------------------------------------
 		// 把数据分成上颌牙和下颌牙两部分
 		// ------------------------------------------------------------------------
@@ -705,39 +697,6 @@ export default function(allActorList) {
 		});
 	}
 
- /**
-  * @description: 根据缩放系数重新计算牙弓线
-  * @param {*} teethType
-  * @param {*} archScale
-  * @return {*}
-  * @author: ZhuYichen
-  */
-	function reScaleDentalArchCoefficients(archScale){
-		for(let teethType of ['upper','lower']){
-			const coEfficients = toRaw(dentalArchSettings[teethType].coEfficients)
-			const scaledCoEfficients =[
-				[coEfficients[0][0]*archScale],
-				[0],
-				[coEfficients[2][0]/Math.pow(archScale,2)*archScale],
-				[0],
-				[coEfficients[4][0]/Math.pow(archScale,4)*archScale],
-			]
-			worker[teethType].postMessage({
-				step: "reScaleDentalArch",
-				data: scaledCoEfficients,
-			});
-		}
-	}
-
-	function usePresetDentalArchCoefficients(selectedPreset){
-		for(let teethType of ['upper','lower']){
-			worker[teethType].postMessage({
-				step: "usePresetDentalArch",
-				data: selectedPreset,
-			});
-		}
-	}
-
 	/**
 	 * @description 根据调整牙弓线排牙
 	 * 触发: 上面板[牙弓线调整]-[更新]按钮
@@ -773,7 +732,5 @@ export default function(allActorList) {
 		startTeethArrangeByAdjustedDentalArch,
 		preFineTuneRecord,
 		reCalculateDentalArchCoefficients,
-		reScaleDentalArchCoefficients,
-		usePresetDentalArchCoefficients,
 	};
 }

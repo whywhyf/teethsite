@@ -8,12 +8,6 @@ import {
     dot,
     distance2BetweenPoints,
 } from "@kitware/vtk.js/Common/Core/Math";
-import vtkCutter from "@kitware/vtk.js/Filters/Core/Cutter";
-import vtkPlane from "@kitware/vtk.js/Common/DataModel/Plane";
-import vtkCylinderSource from "@kitware/vtk.js/Filters/Sources/CylinderSource";
-import vtkPlaneSource from "@kitware/vtk.js/Filters/Sources/PlaneSource";
-
-
 import { bracketNameList } from "../static_config";
 import { reactive } from "vue";
 import { detectPageZoom } from "../utils/browserTypeDetection";
@@ -34,7 +28,6 @@ function calculateLineActorPointsAndDistance(
     zNormal,
     floatDist
 ) {
-    // 2023.10.13更新：原先采用的距离线算法是距离线与牙齿长轴平行，现修改为与托槽znormal垂直
     // 我们需要构建的三段直线的另外两个顶点需要漂浮在actor上方(或者说前面)让用户看到
     // 因此,首先将center沿zNormal方向移动1.5个距离得到centerFloat, 使这个点必定在托槽脱离牙齿的上方
     const centerFloat = [
@@ -44,463 +37,46 @@ function calculateLineActorPointsAndDistance(
     ];
     // 构造平面startPointPlane: origin=startPoint, normal=endPoint-startPoint
     // 构造平面centerPointPlane: origin=center, normal=endPoint-startPoint
-    // const normal = [
-    //     endPoint[0] - startPoint[0],
-    //     endPoint[1] - startPoint[1],
-    //     endPoint[2] - startPoint[2],
-    // ];
-    // normalize(normal); // 归一化
+    const normal = [
+        endPoint[0] - startPoint[0],
+        endPoint[1] - startPoint[1],
+        endPoint[2] - startPoint[2],
+    ];
+    normalize(normal); // 归一化
     // 然后将centerFloat分别投射到平面startPointPlane、centerPointPlane得到第3个点startPlaneProj、第4个点centerPlaneProj
-    // const startPlaneProj = projectPointToPlane(centerFloat, startPoint, normal);
-    // const centerPlaneProj = projectPointToPlane(centerFloat, center, normal);
+    const startPlaneProj = projectPointToPlane(centerFloat, startPoint, normal);
+    const centerPlaneProj = projectPointToPlane(centerFloat, center, normal);
 
     // 我们需要的4个点构成一个LineActor, startPoint->startPlaneProj->centerPlaneProj->center
     // 为了distance考虑, distance需要显示在centerPlaneProj->startPlaneProj中间位置偏上(上方向定义为startPoint->startPlaneProj)
     // 因此多加一个点用于后续psMapper
-    // const upDirection = [
-    //     startPlaneProj[0] - startPoint[0],
-    //     startPlaneProj[1] - startPoint[1],
-    //     startPlaneProj[2] - startPoint[2],
-    // ];
-    // normalize(upDirection);
-    // const textPositionPoint = [
-    //     (centerPlaneProj[0] + startPlaneProj[0]) / 2 + 0.4 * upDirection[0],
-    //     (centerPlaneProj[1] + startPlaneProj[1]) / 2 + 0.4 * upDirection[1],
-    //     (centerPlaneProj[2] + startPlaneProj[2]) / 2 + 0.4 * upDirection[2],
-    // ];
-    // 以下是更新的代码
-    // 计算过startPoint，沿zNormal方向的向量
-    const CS = [
-        startPoint[0] - center[0],
-        startPoint[1] - center[1],
-        startPoint[2] - center[2],
-    ]
-    // startPoint 在zNormal上的投影点K
-    const K = projectionPoint2Vector(CS, zNormal);
-    const KS = [
-        startPoint[0] - K[0],
-        startPoint[1] - K[1],
-        startPoint[2] - K[2],
-    ]
-    const M = [
-        floatDist * zNormal[0] + KS[0],
-        floatDist * zNormal[1] + KS[1],
-        floatDist * zNormal[2] + KS[2],
-    ]
-
-    // startPoint->startPlaneProj->centerPlaneProj->center
-    // const pointValues = new Float32Array([
-    //     ...textPositionPoint, // 第0个点就是text的位置
-    //     ...startPoint,
-    //     ...startPlaneProj,
-    //     ...centerPlaneProj,
-    //     ...center,
-    // ]);
-    // startPoint->M->centerFloat->center
     const upDirection = [
-        M[0] - startPoint[0],
-        M[1] - startPoint[1],
-        M[2] - startPoint[2],
+        startPlaneProj[0] - startPoint[0],
+        startPlaneProj[1] - startPoint[1],
+        startPlaneProj[2] - startPoint[2],
     ];
     normalize(upDirection);
     const textPositionPoint = [
-        (centerFloat[0] + M[0]) / 2 + 0.4 * upDirection[0],
-        (centerFloat[1] + M[1]) / 2 + 0.4 * upDirection[1],
-        (centerFloat[2] + M[2]) / 2 + 0.4 * upDirection[2],
+        (centerPlaneProj[0] + startPlaneProj[0]) / 2 + 0.4 * upDirection[0],
+        (centerPlaneProj[1] + startPlaneProj[1]) / 2 + 0.4 * upDirection[1],
+        (centerPlaneProj[2] + startPlaneProj[2]) / 2 + 0.4 * upDirection[2],
     ];
+
+    // startPoint->startPlaneProj->centerPlaneProj->center
     const pointValues = new Float32Array([
         ...textPositionPoint, // 第0个点就是text的位置
         ...startPoint,
-        ...M,
-        ...centerFloat,
+        ...startPlaneProj,
+        ...centerPlaneProj,
         ...center,
     ]);
 
     // 计算两个平面之间的距离
-    // const distance = Math.sqrt(
-    //     distance2BetweenPoints(centerPlaneProj, startPlaneProj)
-    // );
     const distance = Math.sqrt(
-        distance2BetweenPoints(M, centerFloat)
+        distance2BetweenPoints(centerPlaneProj, startPlaneProj)
     );
 
     return { pointValues, distance };
-}
-
-/**
- * @description: 在pointsValue中查找沿SE方向距离endpoint最远的点
- * @param {*} points pointsValue
- * @return {*} 最远点坐标
- * @author: ZhuYichen
- */
-function findMaxDistancePoint(points, S, E) {
-    let maxDistance = -Infinity;
-    let maxDistancePoint = null;
-    const ES = [
-        S[0]-E[0],
-        S[1]-E[1],
-        S[2]-E[2],
-    ]
-
-    for (let i = 0; i < points.length; i += 3) {
-        const K = [
-            points[i],
-            points[i+1],
-            points[i+2],
-        ]
-        const EK = [
-            K[0]-E[0],
-            K[1]-E[1],
-            K[2]-E[2],
-        ]
-        // 将点投影到ES向量上
-        const EP = projectionPoint2Vector(EK, ES);
-        const distance = vectorMagnitude(EP)
-        if (distance > maxDistance) {
-            maxDistance = distance;
-            maxDistancePoint = K
-        }
-    }
-
-    return maxDistancePoint;
-}
-
-/**
- * @description: 向量叉乘
- * @param {*} vector1
- * @param {*} vector2
- * @return {*}
- * @author: ZhuYichen
- */
-function crossProduct(vector1, vector2) {
-    const x = vector1[1] * vector2[2] - vector1[2] * vector2[1];
-    const y = vector1[2] * vector2[0] - vector1[0] * vector2[2];
-    const z = vector1[0] * vector2[1] - vector1[1] * vector2[0];
-    return [x, y, z];
-}
-
-/**
- * @description: 借助cylindersource构造一个圆面
- * @param {*} center
- * @param {*} radius
- * @param {*} direction
- * @return {*}
- * @author: ZhuYichen
- */
-function createCircleGeometry(center, radius, direction) {
-    const resolution = 320; // 分辨率，可以根据需要调整
-  
-    // 创建一个圆形的几何图形
-    const circleSource = vtkCylinderSource.newInstance({
-      height: 0,   // 高度设置为0以创建一个平面
-      radius,      // 圆的半径
-      resolution,  // 分辨率，决定圆的光滑度
-    });
-  
-    // 设置圆心位置
-    circleSource.setCenter(center);
-  
-    // 设置方向
-    normalize(direction)
-    const normal = direction;
-    circleSource.setDirection(normal);
-  
-    // 获取几何数据
-    const outputData = circleSource.getOutputData();
-  
-    // 获取点数据和多边形数据
-    const circlePoints = outputData.getPoints().getData();
-    const circlePolys = outputData.getPolys().getData();
-  
-    return { circlePoints, circlePolys };
-  }
-
-/**
- * @description: 借助vtkPlaneSource构造一个矩形面
- * @param {*} center
- * @param {*} width
- * @param {*} height
- * @param {*} direction
- * @return {*}
- * @author: ZhuYichen
- */
-function createRectangleGeometry(center, width, height, planeXDirection, planeYDirection) {
-    normalize(planeXDirection)
-    normalize(planeYDirection)
-    const halfWidth = width / 2;
-    const halfHeight = height / 2;
-    
-    // 计算矩形的四个顶点坐标
-    const topLeft = [
-      center[0] - halfWidth * planeXDirection[0] + halfHeight * planeYDirection[0],
-      center[1] - halfWidth * planeXDirection[1] + halfHeight * planeYDirection[1],
-      center[2] - halfWidth * planeXDirection[2] + halfHeight * planeYDirection[2],
-    ];
-    
-    const topRight = [
-        center[0] + halfWidth * planeXDirection[0] + halfHeight * planeYDirection[0],
-        center[1] + halfWidth * planeXDirection[1] + halfHeight * planeYDirection[1],
-        center[2] + halfWidth * planeXDirection[2] + halfHeight * planeYDirection[2],
-    ];
-    
-    const bottomLeft = [
-        center[0] - halfWidth * planeXDirection[0] - halfHeight * planeYDirection[0],
-        center[1] - halfWidth * planeXDirection[1] - halfHeight * planeYDirection[1],
-        center[2] - halfWidth * planeXDirection[2] - halfHeight * planeYDirection[2],
-    ];
-    
-    const bottomRight = [
-        center[0] + halfWidth * planeXDirection[0] - halfHeight * planeYDirection[0],
-        center[1] + halfWidth * planeXDirection[1] - halfHeight * planeYDirection[1],
-        center[2] + halfWidth * planeXDirection[2] - halfHeight * planeYDirection[2],
-    ];
-
-    // 创建矩形的点数据
-    const circlePoints = new Float32Array([
-      ...topLeft, ...topRight, ...bottomLeft, ...bottomRight,
-    ]);
-
-    // 创建矩形的多边形数据
-    const circlePolys = new Uint32Array([4, 0, 1, 3, 2]);
-  
-    return { circlePoints, circlePolys };
-}
-
-/**
- * @description: 求直线AB与平面的交点C
- * @param pointA 直线上一点A
- * @param pointB 直线上一点B
- * @param normal 平面法向量
- * @param pointO 平面上一点O
- * @return {*} 交点C的坐标
- * @author: ZhuYichen
- */
-function lineCrossPlane(
-    pointA,
-    pointB,
-    normal,
-    pointO,
-){
-    const a = pointA[0] - pointB[0];
-    const b = pointA[1] - pointB[1];
-    const c = pointA[2] - pointB[2];
-
-    const d = normal[0];
-    const e = normal[1];
-    const f = normal[2];
-
-    const x0 = pointA[0];
-    const y0 = pointA[1];
-    const z0 = pointA[2];
-
-    const x1 = pointO[0];
-    const y1 = pointO[1];
-    const z1 = pointO[2];
-
-    const t = (d * (x1 - x0) + e * (y1 - y0) + f * (z1 - z0)) / (d * a + e * b + f * c);
-
-    const intersectionPoint = [x0 + t * a, y0 + t * b, z0 + t * c];
-
-    return intersectionPoint;
-}
-
-/**
- * @description: 求pointsData在xy方向上的bbox
- * @param {*} pointsData
- * @return {*}
- * @author: ZhuYichen
- */
-function findMinMax(pointsData) {
-    let minX = Infinity;
-    let minY = Infinity;
-    let minZ = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let maxZ = -Infinity;
-    for (let i = 0; i < pointsData.length; i += 3) {
-        let x = pointsData[i];
-        let y = pointsData[i + 1];
-        let z = pointsData[i + 2];
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        minZ = Math.min(minZ, z);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-        maxZ = Math.max(maxZ, z);
-    }
-
-    return {
-        minX: minX,
-        minY: minY,
-        minZ: minZ,
-        maxX: maxX,
-        maxY: maxY,
-        maxZ: maxZ
-    };
-}
-
-/**
- * @description: 计算最远的牙齿点时，只取牙齿的前半部分，该函数用于过滤所有在牙齿center后方的点
- * @param {*} pointValues 原始的牙齿点
- * @param {*} center 牙齿质心
- * @param {*} normal 沿zNormal方向计算
- * @return {*} 新的牙齿点
- * @author: ZhuYichen
- */
-function filterPoints(pointValues, center, normal) {
-    // 存储大于0的点
-    const newPointValues = [];
-  
-    // 遍历输入的点坐标
-    for (let i = 0; i < pointValues.length; i += 3) {
-      const x = pointValues[i];
-      const y = pointValues[i + 1];
-      const z = pointValues[i + 2];
-  
-      // 计算向量从center到当前点的坐标
-      const vector = [x - center[0], y - center[1], z - center[2]];
-  
-      // 计算点乘结果
-      const dotProduct = vector[0] * normal[0] + vector[1] * normal[1] + vector[2] * normal[2];
-  
-      // 如果点乘结果大于0，则将当前点添加到结果数组中
-      if (dotProduct > 0) {
-        newPointValues.push(x, y, z);
-      }
-    }
-  
-    return newPointValues;
-  }
-
-  
-
-/**
- *
- * @param center 托槽中心
- * @param startPoint 牙尖点
- * @param endPoint 牙底点
- * @param zNormal 托槽法向量
- * @param floatDist 直线沿zNormal方向上浮距离
- * @return {{pointValues: Float32Array, distance: number}}
- */
-function calculateLineActorPointsAndDistanceNew(
-    center,
-    startPoint,
-    endPoint,
-    zNormal,
-    xNormal,
-    floatDist,
-    pointValues,
-    cellValues,
-) {
-    // 2023.11.02更新：原先采用的距离线算法是以牙尖小球为距离线终点，现在改为牙齿最尖端
-    // 我们需要构建的三段直线的另外两个顶点需要漂浮在actor上方(或者说前面)让用户看到
-    // 因此,首先将center沿zNormal方向移动1.5个距离得到centerFloat, 使这个点必定在托槽脱离牙齿的上方
-    const centerFloat = [
-        center[0] + floatDist * zNormal[0],
-        center[1] + floatDist * zNormal[1],
-        center[2] + floatDist * zNormal[2],
-    ];
-    // 以下是更新的代码
-    // 由于距离线要求与zNormal垂直，但垂面的方向需要由SE方向决定
-    // 所以首先将S和E都投影到以z为法向量过centerFloat的平面上
-    const S2 = projectPointToPlane(startPoint, centerFloat, zNormal)
-    const E2 = projectPointToPlane(endPoint, centerFloat, zNormal)
-    // 以S2E2为垂面法向量，则垂面必然平行于z
-    const planeNormal = [
-        E2[0] - S2[0],
-        E2[1] - S2[1],
-        E2[2] - S2[2],
-    ]
-    // 计算牙齿的边界框
-    const {minX, minY, minZ, maxX, maxY, maxZ} = findMinMax(pointValues)
-    // 计算托槽y方向的向量
-    const yNormal = crossProduct(xNormal, zNormal)
-    // 计算牙齿中心
-    const toothCenter1 = [
-        (minX+maxX)/2,
-        (minY+maxY)/2,
-        (minZ+maxZ)/2,
-    ]
-    // 只保留在zNormal方向上，位于牙齿中心前方的点
-    const newPointValues = filterPoints(pointValues, toothCenter1, zNormal)
-    // 计算牙齿前半部分的边界框
-    const {
-        minX: frontMinX, 
-        minY: frontMinY, 
-        minZ: frontMinZ, 
-        maxX: frontMaxX, 
-        maxY: frontMaxY, 
-        maxZ: frontMaxZ
-    } = findMinMax(newPointValues)
-    // 计算前半部分牙齿中心
-    const frontToothCenter1 = [
-        (frontMinX+frontMaxX)/2,
-        (frontMinY+frontMaxY)/2,
-        (frontMinZ+frontMaxZ)/2,
-    ]
-    // 找到S2E2方向上，最远的牙齿点。由此可得垂面的法向量是planeNormal，过tipPoint点。
-    const tipPoint = findMaxDistancePoint(newPointValues, S2, E2)
-
-    // 将centerFloat投影到垂面上，得到M点
-    normalize(planeNormal)
-    const M = projectPointToPlane(centerFloat, tipPoint, planeNormal)
-
-    const upDirection = [
-        M[0] - tipPoint[0],
-        M[1] - tipPoint[1],
-        M[2] - tipPoint[2],
-    ];
-    normalize(upDirection);
-    const textPositionPoint = [
-        (centerFloat[0] + M[0]) / 2 + 0.4 * upDirection[0],
-        (centerFloat[1] + M[1]) / 2 + 0.4 * upDirection[1],
-        (centerFloat[2] + M[2]) / 2 + 0.4 * upDirection[2],
-    ];
-    
-    const distance = Math.sqrt(
-        distance2BetweenPoints(M, centerFloat)
-    );
-    // 构造垂面
-    // 前面已经确定了垂面的法向量和平面上的一点，但由于要求垂面是一个圆面
-    // 现在还需要确定圆的半径和圆心
-    // 圆心要求邻近牙齿中心，因此构造一个center2，是中心沿垂面法向量移动1个单位距离的点
-    var frontToothCenter2 = [
-        (frontMinX+frontMaxX)/2+planeNormal[0],
-        (frontMinY+frontMaxY)/2+planeNormal[1],
-        (frontMinZ+frontMaxZ)/2+planeNormal[2],
-    ]
-    // if(Math.abs(yNormal[2])>0.5){
-    //     toothCenter2[2] += 1;
-    // }else if(Math.abs(yNormal[1])>0.5){
-    //     toothCenter2[1] += 1;
-    // }else if(Math.abs(yNormal[0])>0.5){
-    //     toothCenter2[0] += 1;
-    // }
-    // 半径设为边界框的一半
-    const width = frontMaxX-frontMinX
-    const height = frontMaxY-frontMinY
-    // 计算center1->center2与垂面的交点，以此作为圆心
-    const C = lineCrossPlane(frontToothCenter1, frontToothCenter2, planeNormal, tipPoint)
-    const planeYDirection = [
-        M[0]-C[0],
-        M[1]-C[1],
-        M[2]-C[2],
-    ]
-    normalize(planeYDirection)
-    normalize(planeNormal)
-    const planeXDirection = crossProduct(planeYDirection, planeNormal)
-    const {circlePoints, circlePolys} = createRectangleGeometry(C, 8, 4, planeXDirection, planeYDirection)
-
-    // 构造距离线
-    const linePointValues = new Float32Array([
-        ...textPositionPoint, // 第0个点就是text的位置
-        ...C,
-        ...M,
-        ...centerFloat,
-        ...center,
-    ]);
-    return { linePointValues, distance, circlePoints, circlePolys };
 }
 
 /**
@@ -520,52 +96,7 @@ function projectPointToPlane(x, origin, normal) {
     return [x[0] - t * normal[0], x[1] - t * normal[1], x[2] - t * normal[2]];
 }
 
-/**
- * 计算两个向量的点积
- * @param {number[]} a - 第一个向量
- * @param {number[]} b - 第二个向量
- * @returns {number} 两个向量的点积
- */
-function dotProduct(a, b) {
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-        result += a[i] * b[i];
-    }
-    return result;
-}
-
-/**
- * 计算一个向量的模长
- * @param {number[]} b - 要计算模长的向量
- * @returns {number} 向量的模长
- */
-function vectorMagnitude(b) {
-    let result = 0;
-    for (let i = 0; i < b.length; i++) {
-        result += Math.pow(b[i], 2);
-    }
-    return Math.sqrt(result);
-}
-
-/**
- * 计算一个向量在另一个向量上的投影坐标
- * @param {number[]} a - 要投影的向量
- * @param {number[]} b - 作为投影方向的向量
- * @returns {number[]} 投影结果向量
- */
-function projectionPoint2Vector(a, b) {
-    const dot = dotProduct(a, b);
-    const magSquared = Math.pow(vectorMagnitude(b), 2);
-    const scaleFactor = dot / magSquared;
-
-    const projectionPoint2Vector = b.map(element => element * scaleFactor);
-    return projectionPoint2Vector;
-}
-
-export { 
-    calculateLineActorPointsAndDistance, 
-    calculateLineActorPointsAndDistanceNew 
-};
+export { calculateLineActorPointsAndDistance };
 
 export default function() {
     let distanceMessageList = reactive([]);
@@ -622,7 +153,7 @@ export default function() {
     ) {
         const linePolyData = vtkPolyData.newInstance();
         linePolyData.getPoints().setData(pointValues);
-        linePolyData.getLines().setData(cellValues.slice(0,9));
+        linePolyData.getLines().setData(cellValues);
 
         const mapper = vtkMapper.newInstance();
         mapper.setInputData(linePolyData);
@@ -630,18 +161,6 @@ export default function() {
 
         lineActor.setMapper(mapper);
         lineActor.getProperty().setColor(1, 0, 1);
-        // 分别构造line和plane的actor
-        const planePolyData = vtkPolyData.newInstance();
-        planePolyData.getPoints().setData(pointValues);
-        planePolyData.getPolys().setData(cellValues);
-
-        const planeMapper = vtkMapper.newInstance();
-        planeMapper.setInputData(planePolyData);
-        const planeActor = vtkActor.newInstance();
-
-        planeActor.setMapper(planeMapper);
-        planeActor.getProperty().setColor(1, 0, 1);
-        planeActor.getProperty().setOpacity(0.4);
 
         const psMapper = vtkPixelSpaceCallbackMapper.newInstance(); // 遍历输入数据的每个点, 根据相机3D坐标计算平面2D坐标
         psMapper.setInputData(linePolyData);
@@ -654,11 +173,9 @@ export default function() {
             startPoint,
             endPoint,
             lineActor,
-            planeActor,
             textActor,
             distance, // 修改distance即可直接修改显示的距离文字
             linePolyData, // 修改其中的points数组即可影响到直线actor的生成
-            planePolyData,
             mapper,
             psMapper,
         };
@@ -687,21 +204,6 @@ export default function() {
     }
 
     /**
-     * @description: 用于合并两个pointsdata
-     * @param {*} pointsData1
-     * @param {*} pointsData2
-     * @return {*}
-     * @author: ZhuYichen
-     */
-    function combinePointData(pointsData1, pointsData2) {
-        // 合并两组点数据
-        const combinedPointsData = new Float32Array(pointsData1.length + pointsData2.length);
-        combinedPointsData.set(pointsData1, 0);
-        combinedPointsData.set(pointsData2, pointsData1.length);
-      
-        return combinedPointsData;
-      }
-    /**
      * @description 在托槽微调时调用, 重置时也调用, 更新对应lineActor
      * 微调时直接用, 重置单个时直接用, 重置所有时读取当前选中托槽名称直接用
      * @param lineActorItem 从其中读取
@@ -717,35 +219,20 @@ export default function() {
         toothName,
         center,
         zNormal,
-        xNormal,
         floatDist,
         renderer,
-        renderWindow,
-        pointValues,
-        cellValues
+        renderWindow
     ) {
-        let { startPoint, endPoint, linePolyData, planePolyData, lineActor, planeActor } = lineActorItem;
+        let { startPoint, endPoint, linePolyData, lineActor } = lineActorItem;
 
-        // const { pointValues, distance } = calculateLineActorPointsAndDistance(
-        //     center,
-        //     startPoint,
-        //     endPoint,
-        //     zNormal,
-        //     floatDist
-        // );
-        const { linePointValues, distance, circlePoints, circlePolys } = calculateLineActorPointsAndDistanceNew(
+        const { pointValues, distance } = calculateLineActorPointsAndDistance(
             center,
             startPoint,
             endPoint,
             zNormal,
-            xNormal,
-            floatDist,
-            pointValues,
-            cellValues,
+            floatDist
         );
-        const combinedPointsData= combinePointData(linePointValues, circlePoints)
-        linePolyData.getPoints().setData(combinedPointsData); // 更新直线
-        planePolyData.getPoints().setData(combinedPointsData); // 更新底面
+        linePolyData.getPoints().setData(pointValues); // 更新直线
         lineActorItem.distance = distance; // 更新距离与显示
 
         // 更新列表
@@ -760,10 +247,8 @@ export default function() {
         // mapper的设置方式为inputData可能导致其无法及时根据输入更新, 此处为强制更新(先移出屏幕再移进去)
         if (renderer && renderWindow) {
             renderer.removeActor(lineActor);
-            renderer.removeActor(planeActor);
             renderWindow.render(); // 重新计算移除直线后的屏幕
             renderer.addActor(lineActor); // 以新的actor移入屏幕触发mapper重新根据输入数据计算
-            renderer.addActor(planeActor); // 以新的actor移入屏幕触发mapper重新根据输入数据计算
             renderWindow.render();
         }
     }

@@ -1,68 +1,39 @@
 <template>
-	<div :class="themeType">
-		<div class="right-side-menu" :class="showRightSidemenu ? 'show' : 'hide'">
-			<el-tabs class="demo-tabs" v-model="activeTable" type="card">
-				<el-tab-pane class="demo-tab-pane" label="垂直向高度(mm)" name="distance">
-					<div class="distance-table">
-						<div class="dt-col" v-for="(itemList, index) in distanceMessageList" :key="index">
-							<div
-								class="dt-row"
-								:class="{ selected: currentSelectBracket.name === item.name }"
-								v-for="item in itemList"
-								:key="item.rowId + '-' + item.colId"
-							>
-								<div class="dt-name-box" @click="updateSelectedBracketActorByListClick(item.name)">
-									<span>{{ item.name }}</span>
-								</div>
-								<div class="dt-dist-box">
-									<span>{{ item.distance ? item.distance.toFixed(1) : "-" }}</span>
-								</div>
-							</div>
-						</div>
+	<div class="right-side-menu" :class="showRightSidemenu ? 'show' : 'hide'">
+		<div class="distance-table">
+			<div class="dt-col" v-for="(itemList, index) in distanceMessageList" :key="index">
+				<div
+					class="dt-row"
+					:class="{ selected: currentSelectBracket.name === item.name }"
+					v-for="item in itemList"
+					:key="item.rowId + '-' + item.colId"
+				>
+					<div class="dt-name-box" @click="updateSelectedBracketActorByListClick(item.name)">
+						<span>{{ item.name }}</span>
 					</div>
-				</el-tab-pane>
-				<el-tab-pane class="demo-tab-pane" label="转矩" name="rotate" v-if="hasRotateInfo">
-					<div class="distance-table">
-						<div class="dt-col" v-for="(itemList, index) in rotateMessageList" :key="index">
-							<div
-								class="dt-row"
-								:class="{ selected: currentSelectBracket.name === item.name }"
-								v-for="item in itemList"
-								:key="item.rowId + '-' + item.colId"
-							>
-								<div class="dt-name-box" @click="updateSelectedBracketActorByListClick(item.name)">
-									<span>{{ item.name }}</span>
-								</div>
-								<div class="dt-dist-box">
-									<span>{{ item.rotate ? item.rotate+item.plus : "-" }}</span>
-									<div class="dt-msg-box">
-										<span>{{ item.rotate ? 
-										item.rotate.toString()+(item.plus>=0?'+':'')+item.plus.toString()
-										: "-" }}</span>
-									</div>
-								</div>
-								
-							</div>
-						</div>
+					<div class="dt-dist-box">
+						<span>{{ item.distance ? item.distance.toFixed(2) : "-" }}</span>
 					</div>
-				</el-tab-pane>
-			</el-tabs>
-			
-			<div class="tooth-drag-window">
-				<div ref="vtkSegToothContainer" class="tooth-container" />
-			</div>
-			<div class="tooth-drag-window">
-				<div ref="vtkPictureContainer" class="tooth-container">
-					<canvas ref="vtkPictureTextContainer" class="pic-text-container" />
 				</div>
 			</div>
 		</div>
-
-		<div ref="vtkContainer" class="container">
-			<canvas ref="vtkTextContainer" class="text-container" />
+		<div class="tooth-drag-window">
+			<div ref="vtkSegToothContainer" class="tooth-container" />
+		</div>
+		<div class="tooth-drag-window">
+			<div ref="vtkPictureContainer" class="tooth-container">
+				<canvas ref="vtkPictureTextContainer" class="pic-text-container" />
+			</div>
 		</div>
 	</div>
-	
+	<!-- <button @click="printCoords()">打印</button> -->
+
+	<div ref="vtkContainer" class="container">
+		<canvas ref="vtkTextContainer" class="text-container" />
+		<Calculating
+			:isFinish="isFinish"
+		/>
+	</div>
 </template>
 
 <script setup>
@@ -76,11 +47,9 @@ import {
 	getCurrentInstance,
 	toRaw,
 	defineProps,
-	inject,
-	provide
 } from "vue";
 import { useStore } from "vuex";
-import { cloneDeep } from 'lodash'
+import Calculating from "./Calculating.vue";
 import vtkGenericRenderWindow from "@kitware/vtk.js/Rendering/Misc/GenericRenderWindow";
 
 // hardware selector test
@@ -96,7 +65,6 @@ import vtkSphereLinkHandleRepresentation from "../../reDesignVtk/dentalArchHandl
 import dentalArchHandleWidget from "../../reDesignVtk/dentalArchHandleWidget";
 
 import actorControl from "../../hooks/actorControl";
-import rootFunc from "../../hooks/rootFunc";
 import asyncDataLoadAndParse from "../../hooks/asyncDataLoadAndParse";
 import { uploadCurrentData } from "../../utils/saveNewData";
 import asyncTeethArrange from "../../hooks/asyncTeethArrange";
@@ -111,15 +79,26 @@ import userMatrixControl, {
 	multiplyMatrixList4x4,
 	invertMatrix4x4,
 } from "../../hooks/userMatrixControl";
+import vtkTubeFilter from '@kitware/vtk.js/Filters/General/TubeFilter';
 import vtkMatrixBuilder from "@kitware/vtk.js/Common/Core/MatrixBuilder";
+import vtkAppendPolyData from "@kitware/vtk.js/Filters/General/AppendPolyData";
+import vtkPolyData from "@kitware/vtk.js/Common/DataModel/PolyData"
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
 import { browserType } from "../../utils/browserTypeDetection";
-import { add, multiplyScalar, subtract, dot } from "@kitware/vtk.js/Common/Core/Math";
+import { add, multiplyScalar, subtract } from "@kitware/vtk.js/Common/Core/Math";
 import { sendRequestWithToken } from "../../utils/tokenRequest";
 import TeethBiteWorker from "../../hooks/teethBite.worker";
-import { norm } from "../../reDesignVtk/Math";
-import { presetArrangeDataList } from "../../static_config";
-import { ElMessage } from 'element-plus'
-
+import CollisionDetectWorker from "../../hooks/collisionDetect.worker"
+import { A } from "@kitware/vtk.js/Common/Core/Math/index";
+import { all } from "q";
+import vtkWidgetManager from '../../reDesignVtk/Widgets/Core/WidgetManager';
+import vtkSphereWidget from '@kitware/vtk.js/Widgets/Widgets3D/SphereWidget';
+import vtkLineWidget from '../../reDesignVtk/Widgets/Widgets3D/LineWidget'
+import { random } from "../../reDesignVtk/Math";
+import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource';
+import vtkPolygon from "@kitware/vtk.js/Common/DataModel/Polygon"
+import vtkFPSMonitor from '@kitware/vtk.js/Interaction/UI/FPSMonitor';
 
 const props = defineProps({
 	changeLoadingMessage: {
@@ -131,84 +110,27 @@ const props = defineProps({
 		type: Object,
 		default: () => ({
 			upper: false, // 全上颌牙显示/隐藏
-			upperOrigin: false, // 上颌牙原始牙列显示/隐藏
-			upperOriginBracket: false, // 上颌牙原始托槽显示/隐藏
-			upperOriginGingiva: false,
 			lower: false, // 全下颌牙显示/隐藏
-			lowerOrigin: false, // 下颌牙原始牙列显示/隐藏
-			lowerOriginBracket: false, // 下颌牙原始托槽显示/隐藏
-			lowerOriginGingiva: false,
 			teethWithGingiva: 2, // 牙齿+牙龈0/牙齿1/牙龈2
 			axis: false, // 坐标轴显示/隐藏
 			arch: 2, // 牙弓线显示01/隐藏23, 托槽显示02/隐藏13
 		}),
 	},
+	selectedWidget: String,
+	resetSelectedWidget: {
+		type: Function,
+		default: () => {},
+	},
 });
 
 const store = useStore();
+let isFinish = ref(true);
 const loadedBracketNameList = store.state.userHandleState.bracketNameList;
 const arrangeTeethType = computed(() => store.getters["userHandleState/arrangeTeethType"]);
 const uploadType = computed(() => store.getters["userHandleState/uploadType"]);
 const simMode = computed(() => store.state.actorHandleState.simMode);
 const isInFineTuneMode = computed(() => store.state.actorHandleState.currentMode.fineTune);
 const currentMode = computed(() => store.state.actorHandleState.currentMode);
-const userType = computed(() => store.state.userHandleState.userType);
-// 2023.10.16更新：由于要求不同的用户使用不同的样式主题，这里使用themeType来控制，themeType在请求用户信息时保存到vuex
-const themeType = computed(() => store.state.userHandleState.themeType);
-const activeTable = ref('distance')
-
-const toothOpacity = computed(() => store.state.actorHandleState.toothOpacity);
-const archScale = computed(() => store.state.actorHandleState.archScale);
-const selectedPreset = computed(() => store.state.actorHandleState.selectedPreset);
-watch(selectedPreset, ()=>{
-	usePresetDentalArchCoefficients(selectedPreset.value);
-	setTimeout(()=>{
-		vtkContext.renderWindow.render()
-	},10)
-})
-const clickUsePreset = computed(() => store.state.actorHandleState.clickUsePreset);
-watch(clickUsePreset, ()=>{
-	if(clickUsePreset.value){
-		moveLinkToPreset()
-		store.dispatch("actorHandleState/setClickUsePreset", false)
-	}
-})
-function moveLinkToPreset(){
-	const curPreset = presetArrangeDataList.filter((item)=>{
-		return item.number == selectedPreset.value
-	})[0]
-	
-	for (let teethType of ['upper', 'lower']){
-		// 从配置文件中读取预设的牙弓线
-		const {coEfficients} = curPreset[teethType].dentalArchSettings
-		// 覆盖DentalArchAdjustRecord中的牙弓线系数，在重新生成调整小球时使用新的系数来生成
-		store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
-			[teethType]: {
-				coEfficients,
-			},
-		});
-	}
-}
-watch(archScale, ()=>{
-	reScaleDentalArchCoefficients(archScale.value);
-	setTimeout(()=>{
-		vtkContext.renderWindow.render()
-	},10)
-})
-watch(toothOpacity,(newValue)=>{
-	for(let teethType of ['upper','lower']){
-		allActorList[teethType].originTooth.forEach((item) => {
-			item.actor.getProperty().setOpacity(newValue/100)
-		});
-		allActorList[teethType].originRoot.forEach((item) => {
-			item.actor.getProperty().setOpacity(newValue/100)
-		});
-		if(allActorList[teethType].originGingiva.actor){
-			allActorList[teethType].originGingiva.actor.getProperty().setOpacity(newValue/100)    
-		}
-	}
-	vtkContext.renderWindow.render();
-})
 watch(arrangeTeethType, (newVal)=>{
 	// 如果只有单颌数据被成功加载, 那么后续调整牙弓线的选择最多也就一项
 	if (newVal.length === 1) {
@@ -262,8 +184,7 @@ watch(currentShowPanel, (newVal, oldVal) => {
 	}
 	// 从[工具菜单]进入[牙弓线调整]
 	if (oldVal === -1 && newVal === 1) {
-		// 切换面板时，应该从dentalArchSettings中读取系数
-		regenerateDentalArchWidget([], true);
+		regenerateDentalArchWidget();
 		adjustDentalArchWidgetInScene("enter");
 		// 关闭托槽微调
 		store.dispatch("actorHandleState/updateCurrentMode", {
@@ -274,45 +195,20 @@ watch(currentShowPanel, (newVal, oldVal) => {
 	if (oldVal === 1 && newVal === -1) {
 		adjustDentalArchWidgetInScene("exit");
 		// 删除actor, 重置牙弓线
-		// store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
-		// 	upper: { reset: true },
-		// 	lower: { reset: true },
-		// });
+		store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
+			upper: { reset: true },
+			lower: { reset: true },
+		});
 		// 开启微调托槽
 		store.dispatch("actorHandleState/updateCurrentMode", {
 			fineTune: true,
 		});
 	}
-	// 从[工具菜单]进入[虚拟牙根]
-	if (oldVal === -1 && newVal === 2) {
-		// const teethRootObj = {
-		// 	'upper': xmlObj.upper.teethRootData,
-		// 	'lower': xmlObj.lower.teethRootData,
-		// }
-		// generateRootDirection(teethRootObj);
-		adjustRootWidgetInScene("enter",vtkContext);
-		setGingivaOpacity(0.5);
-	}
-	// 从[虚拟牙根]退出到[工具菜单]
-	if (oldVal === 2 && newVal === -1) {
-		adjustRootWidgetInScene("exit",vtkContext);
-		setGingivaOpacity(1);
-	}
-	// 从[虚拟牙根]进入到[牙弓线调整]
-	if (oldVal === 2 && newVal === 1) {
-		adjustRootWidgetInScene("exit",vtkContext);
-		setGingivaOpacity(1);
-		// 切换面板时，应该从dentalArchSettings中读取系数
-		regenerateDentalArchWidget([], true);
-		adjustDentalArchWidgetInScene("enter");
-		// 关闭托槽微调
-		store.dispatch("actorHandleState/updateCurrentMode", {
-			fineTune: false,
-		});
-	}
 });
+const widgetManagerDentalArch = vtkWidgetManager.newInstance();
 let dentalArchWidgets = {}; // 每次调整后再排牙后需要重新设置
 let initFittingCenters = {};
+//2023.2.14更新：将小球widget改为widgetManager管理
 /**
  * @description 进入牙弓线调整面板时调用, 生成调整小球
  * 小球的位置有两种确定方式, 如果有resetCenters就直接用里面的数据
@@ -321,10 +217,10 @@ let initFittingCenters = {};
  * 这个函数有两个调用时机: 一是进入面板时, 二是保存时, 保存时会重新生成小球
  * 但保存时存入的resetCenters其实还没有存入, 或者说读不到, 所以此时就临时用centers参数传入函数里
  * resetCenters有参数就用参数, 参数未定义就去store里取
- * 2023.7.26更新：不再使用记录的小球位置，每次都重新计算小球位置，使其位于牙弓线上。
- * 				因此，排牙时的拟合点必须为上次排牙的结果，也就是作用mat2后的位置
  */
-function regenerateDentalArchWidget(specTeethType = [], firstGenerate = false) {
+function regenerateDentalArchWidget(specTeethType = []) {
+	widgetManagerDentalArch.setRenderer(vtkContext.renderer);
+	widgetManagerDentalArch.enablePicking();
 	// dentalArchWidgets = {};
 	// initFittingCenters = {};
 	let reGenerateTeethType = specTeethType.length > 0 ? specTeethType : arrangeTeethType.value;
@@ -340,89 +236,6 @@ function regenerateDentalArchWidget(specTeethType = [], firstGenerate = false) {
 		let lessBracketSide = lrBracketNames.left.length < lrBracketNames.right.length ? "left" : "right";
 		let resetCenters = toRaw(dentalArchAdjustRecord[teethType].resetCenters),
 			resetCentersNamesList = Object.keys(resetCenters);
-		// 新增一个控制深度的widget
-		// 初始化点 在标准牙齿坐标系下, 是牙弓线与y轴的交点, 即函数的常数项
-		// 它需要由标准牙齿坐标系转换到normal坐标系 再加上 mat4转换(咬合)
-		let aheadCenterCoordsOfStandardTeethAxis, behindCenterCoordsOfStandardTeethAxis, invMatrix;
-
-		let { zLevelOfArch, W } = toRaw(dentalArchSettings[teethType]);
-		let coEfficients;
-		// 如果是切换面板/重置，需要从dentalArchSettings中读取系数，相当于保存点
-		if (firstGenerate){
-			coEfficients= toRaw(dentalArchSettings[teethType]).coEfficients;
-		}else{
-			// 其他情况下从dentalArchAdjustRecord中读取系数，也就是只更新不保存
-			coEfficients = toRaw(dentalArchAdjustRecord[teethType].coEfficients)
-		}
-		// 前面的小球
-		aheadCenterCoordsOfStandardTeethAxis = [0, coEfficients[0][0], zLevelOfArch];
-		// 后面的小球(x和z相同, y取不同)
-		behindCenterCoordsOfStandardTeethAxis = [0, calculateArchY(W / 2, coEfficients), zLevelOfArch];
-		const { center, xNormal, yNormal, zNormal } = toRaw(teethStandardAxis)[teethType];
-		let transMatrix = calculateRigidBodyTransMatrixSpec(
-			[1, 0, 0, 0, 1, 0, 0, 0, teethType === "upper" ? -1 : 1, 0, 0, 0],
-			generateTeethAxisByNormal(center, xNormal, yNormal, zNormal)
-		);
-
-		// 转换
-		vtkMatrixBuilder
-			.buildFromDegree()
-			.setMatrix(transMatrix)
-			.apply(aheadCenterCoordsOfStandardTeethAxis)
-			.apply(behindCenterCoordsOfStandardTeethAxis);
-		initFittingCenters[teethType].centers["D0"] = [...aheadCenterCoordsOfStandardTeethAxis];
-		initFittingCenters[teethType].centers["D1"] = [...behindCenterCoordsOfStandardTeethAxis];
-		vtkMatrixBuilder
-			.buildFromDegree()
-			.setMatrix(userMatrixList.mat4[teethType])
-			.apply(aheadCenterCoordsOfStandardTeethAxis)
-			.apply(behindCenterCoordsOfStandardTeethAxis);
-		invMatrix = userMatrixList.invMat4[teethType];
-		
-
-		// 构造widget
-		const sphereLinkRep = vtkSphereLinkHandleRepresentation.newInstance({
-			sphereLinkInitValue: {
-				leftSphereCenter: aheadCenterCoordsOfStandardTeethAxis,
-				rightSphereCenter: behindCenterCoordsOfStandardTeethAxis,
-			},
-		});
-		const afterModifyLinkLength = (pos) => {
-			let leftCenter = [...pos[0]],
-				rightCenter = [...pos[1]];
-			// 存入center前先反变换回去
-			vtkMatrixBuilder
-				.buildFromDegree()
-				.setMatrix(invMatrix)
-				.apply(leftCenter)
-				.apply(rightCenter);
-			// 提交这个修改到actorHandleState中, 然后触发监听事件, 触发重新生成牙弓线
-			store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
-				reCalculateArch: true,
-				[teethType]: {
-					centers: { D0: leftCenter, D1: rightCenter },
-				},
-			});
-		};
-		const sphereLinkWidget = dentalArchHandleWidget.newInstance({
-			allowHandleResize: 0,
-			widgetRep: sphereLinkRep,
-			afterModifyLinkLength,
-		});
-		sphereLinkWidget.setInteractor(vtkContext.interactor);
-		dentalArchWidgets[teethType].push({
-			name: { left: "D0", right: "D1" },
-			invMatrix: {
-				left: invMatrix,
-				right: invMatrix,
-			},
-			sphereLinkRep,
-			sphereLinkWidget,
-			resetCenter: {
-				left: [...aheadCenterCoordsOfStandardTeethAxis],
-				right: [...behindCenterCoordsOfStandardTeethAxis],
-			}, // 初始位置(重置用)
-		});
 		for (let i = lrBracketNames[lessBracketSide].length - 1; i >= 1; i -= 2) {
 			// fineTuneRecord.actorMatrix.center: 托槽在牙齿上的最新位置
 			// 即托槽读入后(在原点位)经过mat1和mat3转换后的位置
@@ -439,52 +252,66 @@ function regenerateDentalArchWidget(specTeethType = [], firstGenerate = false) {
 
 			// 小球会在什么时候变化? 排牙或咬合关系调整时, 需要重新设置小球
 			let leftSphereCenter, rightSphereCenter, invLeftTransMatrix, invRightTransMatrix;
-			// 托槽当前的中心
-			leftSphereCenter = [
-				...bracketData[teethType].filter(({ name }) => name === lrBracketNames.left[i])[0].fineTuneRecord
-					.actorMatrix.center,
-			];
-			rightSphereCenter = [
-				...bracketData[teethType].filter(({ name }) => name === lrBracketNames.right[i])[0].fineTuneRecord
-					.actorMatrix.center,
-			];
-			// 就是小球调整的中心, 也是最初的拟合点
-			initFittingCenters[teethType].centers[lrBracketNames.left[i]] = [...leftSphereCenter];
-			initFittingCenters[teethType].centers[lrBracketNames.right[i]] = [...rightSphereCenter];
-			// 经过变换(排牙、咬合)显示在当前对应坐标系下供用户调整
-			let leftTransMatrix = multiplyMatrixList4x4(
-					userMatrixList.invMat3[lrBracketNames.left[i]],
-					userMatrixList.mat2[lrBracketNames.left[i]],
-					userMatrixList.mat4[teethType]
-				),
-				rightTransMatrix = multiplyMatrixList4x4(
-					userMatrixList.invMat3[lrBracketNames.right[i]],
-					userMatrixList.mat2[lrBracketNames.right[i]],
-					userMatrixList.mat4[teethType]
-				);
-			// 逆矩阵, 小球显示的中心经过逆矩阵变换回原位, 即实际用于计算牙弓线的拟合点
-			invLeftTransMatrix = invertMatrix4x4(leftTransMatrix);
-			invRightTransMatrix = invertMatrix4x4(rightTransMatrix);
-			vtkMatrixBuilder
-				.buildFromDegree()
-				.setMatrix(leftTransMatrix)
-				.apply(leftSphereCenter);
-			vtkMatrixBuilder
-				.buildFromDegree()
-				.setMatrix(rightTransMatrix)
-				.apply(rightSphereCenter);
+			if (
+				resetCentersNamesList.includes(lrBracketNames.left[i]) &&
+				resetCentersNamesList.includes(lrBracketNames.right[i])
+			) {
+				// 如果有记录(当前小球显示中心 + 逆变换矩阵)则直接读取
+				leftSphereCenter = [...resetCenters[lrBracketNames.left[i]].center];
+				rightSphereCenter = [...resetCenters[lrBracketNames.right[i]].center];
+				invLeftTransMatrix = resetCenters[lrBracketNames.left[i]].invMatrix;
+				invRightTransMatrix = resetCenters[lrBracketNames.right[i]].invMatrix;
+				initFittingCenters[teethType].centers[lrBracketNames.left[i]] = [...leftSphereCenter];
+				initFittingCenters[teethType].centers[lrBracketNames.right[i]] = [...rightSphereCenter];
+				// 当前小球显示中心 -> 逆变换 = 用与牙弓线计算的拟合点
+				vtkMatrixBuilder
+					.buildFromDegree()
+					.setMatrix(invLeftTransMatrix)
+					.apply(initFittingCenters[teethType].centers[lrBracketNames.left[i]]);
+				vtkMatrixBuilder
+					.buildFromDegree()
+					.setMatrix(invRightTransMatrix)
+					.apply(initFittingCenters[teethType].centers[lrBracketNames.right[i]]);
+			} else {
+				// 托槽当前的中心
+				leftSphereCenter = [
+					...bracketData[teethType].filter(({ name }) => name === lrBracketNames.left[i])[0].fineTuneRecord
+						.actorMatrix.center,
+				];
+				rightSphereCenter = [
+					...bracketData[teethType].filter(({ name }) => name === lrBracketNames.right[i])[0].fineTuneRecord
+						.actorMatrix.center,
+				];
+				// 就是小球调整的中心, 也是最初的拟合点
+				initFittingCenters[teethType].centers[lrBracketNames.left[i]] = [...leftSphereCenter];
+				initFittingCenters[teethType].centers[lrBracketNames.right[i]] = [...rightSphereCenter];
+				// 经过变换(排牙、咬合)显示在当前对应坐标系下供用户调整
+				let leftTransMatrix = multiplyMatrixList4x4(
+						userMatrixList.invMat3[lrBracketNames.left[i]],
+						userMatrixList.mat2[lrBracketNames.left[i]],
+						userMatrixList.mat4[teethType]
+					),
+					rightTransMatrix = multiplyMatrixList4x4(
+						userMatrixList.invMat3[lrBracketNames.right[i]],
+						userMatrixList.mat2[lrBracketNames.right[i]],
+						userMatrixList.mat4[teethType]
+					);
+				// 逆矩阵, 小球显示的中心经过逆矩阵变换回原位, 即实际用于计算牙弓线的拟合点
+				invLeftTransMatrix = invertMatrix4x4(leftTransMatrix);
+				invRightTransMatrix = invertMatrix4x4(rightTransMatrix);
+				vtkMatrixBuilder
+					.buildFromDegree()
+					.setMatrix(leftTransMatrix)
+					.apply(leftSphereCenter);
+				vtkMatrixBuilder
+					.buildFromDegree()
+					.setMatrix(rightTransMatrix)
+					.apply(rightSphereCenter);
+			}
 
 			// 变换到托槽当前的位置上, 直接setUsermatrix过去
 			// 调整时需要反变换回去
-			// 2023.5.31更新：使左右小球对称分布
-			var symmetricPoint = calculateSymmetric(aheadCenterCoordsOfStandardTeethAxis,behindCenterCoordsOfStandardTeethAxis,leftSphereCenter)
-			const sphereLinkRep = vtkSphereLinkHandleRepresentation.newInstance({
-				sphereLinkInitValue: {
-					leftSphereCenter,
-					// rightSphereCenter
-					rightSphereCenter:symmetricPoint,
-				},
-			});
+			// 2023.2.20更新：改为widgetManager控制
 			const afterModifyLinkLength = (pos) => {
 				// 得到当前小球显示的中心点
 				let leftCenter = [...pos[0]];
@@ -510,12 +337,10 @@ function regenerateDentalArchWidget(specTeethType = [], firstGenerate = false) {
 					},
 				});
 			};
-			const sphereLinkWidget = dentalArchHandleWidget.newInstance({
-				allowHandleResize: 0,
-				widgetRep: sphereLinkRep,
+			const sphereLinkWidget = vtkLineWidget.newInstance({
 				afterModifyLinkLength,
 			});
-			sphereLinkWidget.setInteractor(vtkContext.interactor);
+			// sphereLinkWidget.setInteractor(vtkContext.interactor);
 			dentalArchWidgets[teethType].push({
 				name: {
 					left: lrBracketNames.left[i],
@@ -525,37 +350,104 @@ function regenerateDentalArchWidget(specTeethType = [], firstGenerate = false) {
 					left: invLeftTransMatrix,
 					right: invRightTransMatrix,
 				},
-				sphereLinkRep,
 				sphereLinkWidget,
+				newCenter: {
+					left: [...leftSphereCenter],
+					right: [...rightSphereCenter],
+				}, // 用于记录位置，在removeWidget后保留上一次调整的最终位置，初始化时和resetCenter相同
 				resetCenter: {
 					left: [...leftSphereCenter],
-					right: [...symmetricPoint],
+					right: [...rightSphereCenter],
 				}, // 初始位置(重置用)
 			});
 		}
+		// 新增一个控制深度的widget
+		// 初始化点 在标准牙齿坐标系下, 是牙弓线与y轴的交点, 即函数的常数项
+		// 它需要由标准牙齿坐标系转换到normal坐标系 再加上 mat4转换(咬合)
+		let aheadCenterCoordsOfStandardTeethAxis, behindCenterCoordsOfStandardTeethAxis, invMatrix;
+
+		if (resetCentersNamesList.includes("D0") && resetCentersNamesList.includes("D1")) {
+			// 如果有记录(当前小球显示中心 + 逆变换矩阵)则直接读取
+			aheadCenterCoordsOfStandardTeethAxis = [...resetCenters.D0.center];
+			behindCenterCoordsOfStandardTeethAxis = [...resetCenters.D1.center];
+			invMatrix = resetCenters.D0.invMatrix;
+			initFittingCenters[teethType].centers["D0"] = [...aheadCenterCoordsOfStandardTeethAxis];
+			initFittingCenters[teethType].centers["D1"] = [...behindCenterCoordsOfStandardTeethAxis];
+			// 当前小球显示中心 -> 逆变换 = 用与牙弓线计算的拟合点
+			vtkMatrixBuilder
+				.buildFromDegree()
+				.setMatrix(invMatrix)
+				.apply(initFittingCenters[teethType].centers["D0"])
+				.apply(initFittingCenters[teethType].centers["D1"]);
+		} else {
+			let { coEfficients, zLevelOfArch, W } = toRaw(dentalArchSettings[teethType]);
+			// 前面的小球
+			aheadCenterCoordsOfStandardTeethAxis = [0, coEfficients[0][0], zLevelOfArch];
+			// 后面的小球(x和z相同, y取不同)
+			behindCenterCoordsOfStandardTeethAxis = [0, calculateArchY(W / 2, coEfficients), zLevelOfArch];
+			const { center, xNormal, yNormal, zNormal } = toRaw(teethStandardAxis)[teethType];
+			let transMatrix = calculateRigidBodyTransMatrixSpec(
+				[1, 0, 0, 0, 1, 0, 0, 0, teethType === "upper" ? -1 : 1, 0, 0, 0],
+				generateTeethAxisByNormal(center, xNormal, yNormal, zNormal)
+			);
+
+			// 转换
+			vtkMatrixBuilder
+				.buildFromDegree()
+				.setMatrix(transMatrix)
+				.apply(aheadCenterCoordsOfStandardTeethAxis)
+				.apply(behindCenterCoordsOfStandardTeethAxis);
+			initFittingCenters[teethType].centers["D0"] = [...aheadCenterCoordsOfStandardTeethAxis];
+			initFittingCenters[teethType].centers["D1"] = [...behindCenterCoordsOfStandardTeethAxis];
+			vtkMatrixBuilder
+				.buildFromDegree()
+				.setMatrix(userMatrixList.mat4[teethType])
+				.apply(aheadCenterCoordsOfStandardTeethAxis)
+				.apply(behindCenterCoordsOfStandardTeethAxis);
+			invMatrix = userMatrixList.invMat4[teethType];
+		}
+
+		// 构造widget
+		const afterModifyLinkLength = (pos) => {
+			let leftCenter = [...pos[0]],
+				rightCenter = [...pos[1]];
+			// 存入center前先反变换回去
+			vtkMatrixBuilder
+				.buildFromDegree()
+				.setMatrix(invMatrix)
+				.apply(leftCenter)
+				.apply(rightCenter);
+			// 提交这个修改到actorHandleState中, 然后触发监听事件, 触发重新生成牙弓线
+			store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
+				reCalculateArch: true,
+				[teethType]: {
+					centers: { D0: leftCenter, D1: rightCenter },
+				},
+			});
+		};
+		const sphereLinkWidget = vtkLineWidget.newInstance({
+			afterModifyLinkLength,
+		});
+		// sphereLinkWidget.setInteractor(vtkContext.interactor);
+		dentalArchWidgets[teethType].push({
+			name: { left: "D0", right: "D1" },
+			invMatrix: {
+				left: invMatrix,
+				right: invMatrix,
+			},
+			sphereLinkWidget,
+			newCenter: {
+				left: [...aheadCenterCoordsOfStandardTeethAxis],
+				right: [...behindCenterCoordsOfStandardTeethAxis],
+			}, // 用于记录位置，在removeWidget后保留上一次调整的最终位置，初始化时和resetCenter相同
+			resetCenter: {
+				left: [...aheadCenterCoordsOfStandardTeethAxis],
+				right: [...behindCenterCoordsOfStandardTeethAxis],
+			}, // 初始位置(重置用)
+		});
 	}
 	store.dispatch("actorHandleState/updateDentalArchAdjustRecord", initFittingCenters);
 	vtkContext.renderWindow.render();
-}
-
-/**
- * @description: 计算空间中点C关于AB的对称点D，其中E是C在AB上的垂足
- * @param {*} A
- * @param {*} B
- * @param {*} C
- * @return {*} D 
- * @author: ZhuYichen
- */
-function calculateSymmetric(A,B,C) {
-	var D = [];
-	var AB = subtract(B,A,[]);
-	var AC = subtract(C,A,[]);
-	var cosA = dot(AB, AC) / (norm(AB) * norm(AC));
-	var AE = multiplyScalar([...AB],cosA*norm(AC)/norm(AB))
-	var CE = subtract(AE,AC,[])
-	var CD = multiplyScalar([...CE],2)
-	var D = add(C,CD,[])
-	return D;
 }
 /**
  * @description 在mat4更新后, 如果牙弓线调整小球之前有记录位置, 就需要根据现在的新mat重新生成,
@@ -636,12 +528,6 @@ watch(reCalculateArch, (newValue) => {
 					},
 				};
 			}
-			// 2023.7.26更新：原先排牙的初始拟合点全部是在排牙前的托槽点上进行的， 现在改为在排牙后(也就是作用mat2之后)的点上进行
-			let transMatrix = userMatrixList.mat2[name]
-			vtkMatrixBuilder
-					.buildFromDegree()
-					.setMatrix(transMatrix)
-					.apply(bracketCenters[name].bracketMatrix.center);
 		}
 		// 添加深度调整点
 		if (adjustNames.includes("D0")) {
@@ -683,14 +569,13 @@ watch(isResetAdjustDentalArch, (newValue) => {
 		if (newValue[teethType]) {
 			// 根据dentalArchSettings的coEfficients重新生成牙弓线
 			reCalculateDentalArchCoefficients(teethType, null, true);
-			// 重置所有调整小球到原位。
-			// 不再采用读取记录点的方式，而是重新计算
-			adjustDentalArchWidgetInScene("exit");
-			regenerateDentalArchWidget([teethType], true)
-			adjustDentalArchWidgetInScene("enter");
-			// dentalArchWidgets[teethType].forEach(({ sphereLinkRep, resetCenter }) => {
-			// 	sphereLinkRep.setCenters([...resetCenter.left], [...resetCenter.right]);
-			// });
+			// 重置所有调整小球到原位
+			// 2023.2.20更新
+			dentalArchWidgets[teethType].forEach(({ sphereLinkWidget, resetCenter }) => {
+				sphereLinkWidget.getWidgetState().getHandle1().setOrigin([...resetCenter.left]);
+				sphereLinkWidget.getWidgetState().getHandle2().setOrigin([...resetCenter.right]);
+				// sphereLinkWidget.setCenters([...resetCenter.left], [...resetCenter.right]);
+			});
 			// 重置centers为init点
 			store.dispatch("actorHandleState/updateDentalArchAdjustRecord", {
 				[teethType]: {
@@ -714,16 +599,6 @@ watch(isReArrangeTeethByAdjustedDentalArch, (newValue) => {
 			});
 		}
 	}
-	// 需要等待牙弓线系数重新计算完毕，再重新生成小球
-	setTimeout(()=>{
-		adjustDentalArchWidgetInScene("exit");
-		for (let teethType of ["upper", "lower"]){
-			if (newValue[teethType]) {
-				regenerateDentalArchWidget([teethType])
-			}
-		}
-		adjustDentalArchWidgetInScene("enter");
-	}, 600)
 });
 function reArrangeOneTypeTeethByAdjustedDentalArch(teethType) {
 	if (dentalArchAdjustRecord[teethType].coEfficients !== null) {
@@ -745,36 +620,45 @@ const dentalArchAdjustType = computed(() => store.state.actorHandleState.teethAr
 watch(dentalArchAdjustType, () => {
 	// 如果当前在牙弓线面板下, 则进行switch操作, 否则这次更改可能是在加载完成时搞的
 	// 但看操作, 实质上不会报错, 所以不限制也行
-	if(currentShowPanel.value==1){
-		adjustDentalArchWidgetInScene("switch");
-	}else if(currentShowPanel.value==2){
-		adjustRootWidgetInScene("switch",vtkContext);
-	}
+	adjustDentalArchWidgetInScene("switch");
 });
 /**
  * @description 切换至牙弓线调整面板, 牙弓线调整面板中切换上下颌时调用
  */
 function adjustDentalArchWidgetInScene(mode) {
 	let selectedTeethType = dentalArchAdjustType.value;
+	console.log(selectedTeethType)
 	switch (mode) {
 		case "enter": {
-			dentalArchWidgets[selectedTeethType].forEach(({ sphereLinkWidget }) => {
-				sphereLinkWidget.setEnabled(1);
+			dentalArchWidgets[selectedTeethType].forEach(({ sphereLinkWidget, resetCenter }) => {
+				// sphereLinkWidget.setEnabled(1);
+				const widgetHandle = widgetManagerDentalArch.addWidget(sphereLinkWidget);
+                widgetHandle.placeHandleByCoords(resetCenter.left,resetCenter.right)
 			});
 			break;
 		}
 		case "exit": {
 			dentalArchWidgets[selectedTeethType].forEach(({ sphereLinkWidget }) => {
-				sphereLinkWidget.setEnabled(0);
+				// sphereLinkWidget.setEnabled(0);
+				widgetManagerDentalArch.removeWidget(sphereLinkWidget)
 			});
 			break;
 		}
 		case "switch": {
 			Object.keys(dentalArchWidgets).forEach((teethType) => {
 				if (teethType === selectedTeethType) {
-					dentalArchWidgets[teethType].forEach(({ sphereLinkWidget }) => sphereLinkWidget.setEnabled(1));
+					dentalArchWidgets[teethType].forEach(({ sphereLinkWidget, newCenter }) => {
+						// sphereLinkWidget.setEnabled(1)
+						const widgetHandle = widgetManagerDentalArch.addWidget(sphereLinkWidget);
+                		widgetHandle.placeHandleByCoords(newCenter.left,newCenter.right)
+					});
 				} else {
-					dentalArchWidgets[teethType].forEach(({ sphereLinkWidget }) => sphereLinkWidget.setEnabled(0));
+					dentalArchWidgets[teethType].forEach(({ sphereLinkWidget, newCenter }) => {
+						// sphereLinkWidget.setEnabled(0)
+						widgetManagerDentalArch.removeWidget(sphereLinkWidget);
+                		newCenter.left = sphereLinkWidget.getWidgetState().getHandle1().getOrigin();
+						newCenter.right = sphereLinkWidget.getWidgetState().getHandle2().getOrigin();
+					});
 				}
 			});
 			break;
@@ -798,11 +682,20 @@ watch(overwriteByDentalArchAdjustRecord, (newValue) => {
 			for (let {
 				name: { left: leftName, right: rightName },
 				invMatrix: { left: leftMat, right: rightMat },
-				sphereLinkRep,
+				sphereLinkWidget,
 				resetCenter,
 			} of dentalArchWidgets[teethType]) {
 				// 得到小球当前的显示中心(如果经过invMatrix逆变换则能得到用于牙弓线计算的拟合点坐标)
-				let center = sphereLinkRep.getCenters();
+				// 2023.2.20更新
+				let center=[];
+				if(sphereLinkWidget.getWidgetState().getHandle1().getOrigin()){
+					center = [
+						sphereLinkWidget.getWidgetState().getHandle1().getOrigin(),
+						sphereLinkWidget.getWidgetState().getHandle2().getOrigin()
+					];
+				}else{
+					center = [resetCenter.left,resetCenter.right]
+				}
 				centers[teethType][leftName] = {
 					center: [...center[0]],
 					invMatrix: [...leftMat],
@@ -860,6 +753,7 @@ watch(overwriteByDentalArchAdjustRecord, (newValue) => {
 
 const reArrangeToInitState = computed(() => store.getters["actorHandleState/isResetDentalArchToInitState"]);
 watch(reArrangeToInitState, (newValue, oldValue) => {
+	console.log(newValue, oldValue)
 	for (let teethType of ["upper", "lower"]) {
 		if (newValue[teethType] && !oldValue[teethType]) {
 			// false -> true
@@ -942,94 +836,6 @@ function teethPositionAdjust(moveType) {
 	}
 	fineTuneTeethPosition(option);
 }
-const generateRootRecord = computed(() => cloneDeep(store.state.actorHandleState.generateRootRecord));
-watch(generateRootRecord,(newValue, oldValue) => {
-	for (let teethType of ['upper','lower']){
-		if(newValue[teethType]&&!oldValue[teethType]){
-			if (allActorList[teethType].rootGenerate.length>0){
-				// 如果存在牙根数据，说明初始已加载，这里不需要再请求
-				continue;
-			}
-			const elMessage = ElMessage({
-				message: '正在生成虚拟牙根...',
-				grouping: true,
-				type: 'warning',
-				duration: 0,
-				showClose: true,
-				offset: -7,
-			})
-			// 如果不加这个延时，elMessage会延迟一小会才显示
-			setTimeout(()=>{
-				generateRoot(teethType)
-				.then((result) => {
-					allActorList[teethType].rootGenerate = result.rootList;
-					allActorList[teethType].originRoot = result.originRootList;
-					const { renderWindow, renderer } = vtkContext;
-					allActorList[teethType].rootGenerate.forEach(({actor})=>{
-						renderer.addActor(actor)
-					})
-					allActorList[teethType].root.forEach(({ rootWidget }) => {
-						rootWidget.setEnabled(false);
-					});
-					renderWindow.render()
-					elMessage.close()
-				})
-				.catch((error) => {
-					console.error(error); // 处理错误情况
-				});
-			}, 50)
-		}
-		if(!newValue[teethType]&&oldValue[teethType]){
-			// 清除牙根
-			const { renderWindow, renderer } = vtkContext;
-			allActorList[teethType].rootGenerate.forEach(({actor})=>{
-				renderer.removeActor(actor)
-			})
-			allActorList[teethType].rootGenerate = []
-			allActorList[teethType].root.forEach(({ rootWidget }) => {
-				rootWidget.setEnabled(true);
-			});
-			renderWindow.render()
-		}
-	}
-  },
-  { deep: true }
-);
-
-const initRootFlag = computed(() => cloneDeep(store.state.actorHandleState.initRootFlag));
-const initRootParams = computed(() => store.state.actorHandleState.initRootParams)
-watch(initRootFlag, (newValue, oldValue)=>{
-	for (let teethType of ['upper','lower']){
-		if(newValue[teethType]&&!oldValue[teethType]){
-			if (allActorList[teethType].rootGenerate.length>0){
-				// 如果存在牙根数据，则无法重置参数
-				const elMessage = ElMessage({
-					message: '需要先取消已生成的牙根！',
-					grouping: true,
-					type: 'warning',
-					duration: 3000,
-					showClose: true,
-					offset: -7,
-				})
-			}else{
-				initRootParams.value[teethType].forEach(({toothName, bottomSphereCenter, topSphereCenter, radiusSphereCenter})=>{
-					allActorList[teethType].root.forEach((item)=>{
-						if(item.toothName == toothName){
-							item.rootRep.setCenters(
-								bottomSphereCenter,
-								topSphereCenter,
-								radiusSphereCenter,
-							)
-						}
-					})
-				})
-			}
-			store.dispatch("actorHandleState/setInitRootFlag", {
-				[teethType]: false,
-			});
-		}
-	}
-})
 
 const { proxy } = getCurrentInstance();
 
@@ -1049,7 +855,7 @@ let initRenderCamera = false; // 初始模型加载需要重置一次镜头
 let forceUpdateAtMode = ""; // 用于强制更新时的记录
 
 let teethBiteworker = null;
-
+let collisionDetectWorker = null;
 const {
 	userMatrixList,
 	applyCalMatrix,
@@ -1078,7 +884,6 @@ const {
 	bracketData,
 	updateDistanceLineActor,
 	distanceMessageList,
-	rotateMessageList,
 	longAxisData,
 } = asyncDataLoadAndParse(vtkTextContainer, userMatrixList, applyCalMatrix);
 // applyCalMatrix用于对更新长轴点时生成的新坐标轴设置userMatrix
@@ -1093,13 +898,6 @@ const {
 	adjustActorWhenSwitchSimulationMode,
 } = actorControl(allActorList);
 const {
-	generateRootDirection,
-    adjustRootWidgetInScene,
-	setGingivaOpacity,
-	generateRoot,
-    clearRoot,
-} = rootFunc(allActorList,toothPolyDatas,bracketData);
-const {
 	preFineTuneRecord, // 记录上次[模拟排牙]时托槽的微调位置, 用于[模拟排牙]模式的微调中
 	currentArrangeStep,
 	terminateArrangeWorker,
@@ -1107,8 +905,6 @@ const {
 	startTeethArrange,
 	startTeethArrangeByAdjustedDentalArch,
 	reCalculateDentalArchCoefficients,
-	reScaleDentalArchCoefficients,
-	usePresetDentalArchCoefficients,
 } = asyncTeethArrange(allActorList);
 const teethStandardAxis = store.state.actorHandleState.teethArrange.teethStandardAxis;
 const resetTeethAxisFinetuneRecord = store.state.actorHandleState.teethArrange.teethAxisFinetuneRecord;
@@ -1232,16 +1028,6 @@ onMounted(() => {
 	}
 });
 
-// 如果是新主题，必须监视themeType的变化来更新，因为omMounted时变量值还没发生改变
-watch(themeType, (newVal) => {
-	vtkContext.genericRenderer.setBackground([0.97, 0.97, 0.95]);
-	vtkSegToothContext.genericRenderer.setBackground([0.97, 0.97, 0.95]);
-	vtkPictureContext.genericRenderer.setBackground([0.97, 0.97, 0.95]);
-	vtkContext.renderWindow.render()
-	vtkSegToothContext.renderWindow.render()
-	vtkPictureContext.renderWindow.render()
-});
-
 onBeforeUnmount(() => {
 	terminateArrangeWorker();
 });
@@ -1294,15 +1080,15 @@ const throttleMouseHandler = throttle(pickOnMouseEvent, 100);
 function eventToWindowXY(event) {
 	const { interactor } = vtkContext;
 	let { offsetX, offsetY } = event;
-	if (browserType() === "Firefox") {
-		// 火狐不支持offsetX, offsetY 需要手动计算
-		// 获得父元素相对页面偏移
-		let { offsetLeft, offsetTop } = getOffsetForFirefox(event.target);
-		// 获得鼠标相对页面page坐标
-		let { pageX, pageY } = event;
-		offsetX = pageX - offsetLeft;
-		offsetY = pageY - offsetTop;
-	}
+	// if (browserType() === "Firefox") {
+	// 	// 火狐不支持offsetX, offsetY 需要手动计算
+	// 	// 获得父元素相对页面偏移
+	// 	let { offsetLeft, offsetTop } = getOffsetForFirefox(event.target);
+	// 	// 获得鼠标相对页面page坐标
+	// 	let { pageX, pageY } = event;
+	// 	offsetX = pageX - offsetLeft;
+	// 	offsetY = pageY - offsetTop;
+	// }
 	// // 全浏览器
 	// let {offsetLeft, offsetTop} = getOffsetForFirefox(event.target)
 	// 获得鼠标相对页面page坐标
@@ -1405,6 +1191,7 @@ watch(isInFineTuneMode, (newVal) => {
 	showRightSidemenu.value = newVal;
 });
 
+var handleInfoGet={};
 // 用于监听当前选中托槽的改变(需要旧值和新值), 用于对应坐标轴actor的添加和移除
 watch(
 	() => currentSelectBracket.name,
@@ -1413,7 +1200,8 @@ watch(
 		// 空->托槽, 需要add
 		// 托槽->空, 需要remove
 		// 托槽->另一托槽, 需要add和remove
-		const { addActorsList, delActorsList } = axisActorShowStateUpdate(oldVal, newVal, props.actorInScene.axis);
+		const { addActorsList, delActorsList, handleInfo } = axisActorShowStateUpdate(oldVal, newVal, props.actorInScene.axis, widgetManager, applyCalMatrix.tad);
+		handleInfoGet = handleInfo;
 		actorInSceneAdjust(addActorsList, delActorsList);
 		// 托槽->空时需要清除距离文字
 		if (newVal === "") {
@@ -1421,9 +1209,32 @@ watch(
 			const textCtx = vtkTextContainer.value.getContext("2d");
 			textCtx.clearRect(0, 0, dims.width, dims.height);
 		}
+		//2023.3.8更新：切换托槽就重置下拉菜单
+		props.resetSelectedWidget();
 	}
 );
+// 2023.2.19更新：用于移动牙尖/牙底小球（按键式）
 
+function moveHandle(selectedWidget, moveType, moveStep, ifStraightenSimulation){
+	const widgetHandle = selectedWidget=='startPoint'?widgetManager.getWidgets()[0]:widgetManager.getWidgets()[1];
+	if (currentSelectBracket.name.startsWith('U')){
+		bracketData.upper.forEach((value)=>{
+			if (value.name==currentSelectBracket.name){
+				widgetHandle.buttonMoveCenter(moveType, value.position.zNormal, moveStep, ifStraightenSimulation)
+			}
+		})
+	}
+	if (currentSelectBracket.name.startsWith('L')){
+		bracketData.lower.forEach((value)=>{
+			if (value.name==currentSelectBracket.name){
+				// 下颌与上颌的移动逻辑相反
+				widgetHandle.buttonMoveCenter(moveType, value.position.zNormal, moveStep, !ifStraightenSimulation)
+			}
+		})
+	}
+}
+
+const widgetManager = vtkWidgetManager.newInstance();
 // 用于监听显示/隐藏状态改变
 watch(props.actorInScene, (newVal) => {
 	const { addActorsList, delActorsList } = actorShowStateUpdateFusion(newVal, fineTuneMode.value !== "normal");
@@ -1479,18 +1290,35 @@ watch(props.actorInScene, (newVal) => {
 			}
 		}
 
+		// 2022.12.15更新：由于版本变动，小球widget全部重写
 		// 加入widget
+		// for (let teethType of ["upper", "lower"]) {
+		// 	allActorList[teethType].distanceLine.forEach((item) => {
+		// 		item.startPointRep.setFuncRenderer(renderer);
+		// 		item.startPointRep.setFuncRenderWindow(renderWindow);
+		// 		item.startPointWidget.setInteractor(renderWindow.getInteractor());
+		// 		item.startPointWidget.setEnabled(0);
+		// 		item.endPointRep.setFuncRenderer(renderer);
+		// 		item.endPointRep.setFuncRenderWindow(renderWindow);
+		// 		item.endPointWidget.setInteractor(renderWindow.getInteractor());
+		// 		item.endPointWidget.setEnabled(0);
+		// 	});
+		// }
+
+		// 2022.12.15更新：使用widgetManager管理小球widget
+		widgetManager.setRenderer(renderer);
+		widgetManager.enablePicking();
 		for (let teethType of ["upper", "lower"]) {
 			allActorList[teethType].distanceLine.forEach((item) => {
-				item.startPointRep.setFuncRenderer(renderer);
-				item.startPointRep.setFuncRenderWindow(renderWindow);
-				item.startPointWidget.setInteractor(renderWindow.getInteractor());
-				item.startPointWidget.setEnabled(0);
-				item.endPointRep.setFuncRenderer(renderer);
-				item.endPointRep.setFuncRenderWindow(renderWindow);
-				item.endPointWidget.setInteractor(renderWindow.getInteractor());
-				item.endPointWidget.setEnabled(0);
-			});
+				item.startPointWidget.setRenderer(renderer)
+				item.startPointWidget.setRenderWindow(renderWindow)
+				item.endPointWidget.setRenderer(renderer)
+				item.endPointWidget.setRenderWindow(renderWindow)
+				// const startPointWidgetHandle = widgetManager.addWidget(item.startPointWidget);
+				// startPointWidgetHandle.setCenterAndRadius(item.startPoint, 0)
+				// const endPointWidgetHandle = widgetManager.addWidget(item.endPointWidget);
+				// endPointWidgetHandle.setCenterAndRadius(item.endPoint, 0)
+			})
 		}
 
 		// 左下角xyz坐标轴指示设置矩阵变换
@@ -1552,25 +1380,6 @@ watch(finishLoad, (newVal) => {
 			});
 		}
 
-		// 在这里判断是否显示牙根
-		const { renderWindow, renderer } = vtkContext;
-		for(let teethType of ['upper', 'lower']){
-			if(allActorList[teethType].rootGenerate.length>0){
-				store.dispatch("actorHandleState/updateGenerateRootRecord", {
-					[teethType]: true,
-				});
-				allActorList[teethType].rootGenerate.forEach(({actor})=>{
-					renderer.addActor(actor)
-				})
-			}
-			// if(allActorList[teethType].originRoot.length>0){
-			// 	allActorList[teethType].originRoot.forEach(({actor})=>{
-			// 		renderer.addActor(actor)
-			// 	})
-			// }
-			// setGingivaOpacity(0.5);
-			renderWindow.render()
-		}
 		postInitialDataToWorker(
 			{
 				tooth: toothPolyDatas,
@@ -1731,7 +1540,7 @@ function resetSingleBracket() {
 	vtkSegToothContext.renderWindow.render();
 
 	// 重新计算距离 + 更新距离文字
-	updateDistanceLineActor(name, center, zNormal, xNormal, renderer, renderWindow);
+	updateDistanceLineActor(name, center, zNormal, renderer, renderWindow);
 }
 /**
  * @description 重置所有托槽位置
@@ -1755,10 +1564,10 @@ function resetAllBracket() {
 			};
 			if (name === selectBracketName) {
 				// 重新计算距离 + 更新距离文字
-				updateDistanceLineActor(name, center, zNormal, xNormal, renderer, renderWindow);
+				updateDistanceLineActor(name, center, zNormal, renderer, renderWindow);
 			} else {
 				// 当前无选中托槽, 仅更新距离
-				updateDistanceLineActor(name, center, zNormal, xNormal);
+				updateDistanceLineActor(name, center, zNormal);
 			}
 		});
 	}
@@ -1947,31 +1756,16 @@ function focusOnSelectedBracket() {
 }
 
 /**
-* @description: 牙齿贴合式托槽微调。
-fineTuneRecordRotate保存着转矩操作引起的变换
-fineTuneRecord保存着除转矩操作外（平移和z轴旋转）操作引起的变换
-排牙时使用fineTuneRecord即可
-* @param {*} moveOption
-* @return {*}
-* @author: ZhuYichen
-*/
+ * @description 牙齿贴合式托槽微调
+ */
 function fineTuneBracket(moveOption) {
 	let { moveStep, moveType } = moveOption;
 	let { renderer, renderWindow } = vtkContext;
-	const isRotate = moveType=='XALONG'||moveType=='XANTI';
 
 	const matchData = findSelectedBracketData();
 	const { name } = currentSelectBracket;
-	if(isRotate){
-		rotateMessageList[name[2]-1].forEach((targetTooth)=>{
-			if(name==targetTooth.name){
-				// 牙尖外凸为正
-				let plus = moveType=='XALONG'? -moveStep:moveStep;
-				targetTooth.plus = targetTooth.plus+plus;
-			}
-		})
-	}
 	const {
+		fineTuneRecord: { actorMatrix },
 		bottomFaceIndexList,
 		bracketBottomPointValues,
 	} = matchData;
@@ -1985,7 +1779,7 @@ function fineTuneBracket(moveOption) {
 		toothPolyDatas[name].getPoints().getData(),
 		bracketPolyDatas[name].getPoints().getData(),
 		bracketPolyDatas[name].getPolys().getData(),
-		isRotate?matchData.fineTuneRecordRotate.actorMatrix:matchData.fineTuneRecord.actorMatrix, 
+		actorMatrix,
 		moveType,
 		moveStep
 	);
@@ -1996,42 +1790,38 @@ function fineTuneBracket(moveOption) {
 			center: true,
 		});
 	}
-	if(isRotate){
-		matchData.fineTuneRecordRotate = {
-			actorMatrix: {
-				// 决定托槽本身角度的法向量方向(角度定位轴)
-				center: [...transCenter],
-				xNormal: [...transXNormal],
-				yNormal: [...transYNormal],
-				zNormal: [...transZNormal],
-			},
-		};
-	}else{
-		matchData.fineTuneRecord = {
-			actorMatrix: {
-				// 决定托槽本身角度的法向量方向(角度定位轴)
-				center: [...transCenter],
-				xNormal: [...transXNormal],
-				yNormal: [...transYNormal],
-				zNormal: [...transZNormal],
-			},
-		};
-	}
+
+	matchData.fineTuneRecord = {
+		actorMatrix: {
+			// 决定托槽本身角度的法向量方向(角度定位轴)
+			center: [...transCenter],
+			xNormal: [...transXNormal],
+			yNormal: [...transYNormal],
+			zNormal: [...transZNormal],
+		},
+	};
+
 	// 托槽变换
-	updateAndApplySingleBracketUserMatrix(
-		name, 
-		isRotate?matchData.fineTuneRecordRotate.actorMatrix:matchData.fineTuneRecord.actorMatrix, 
-		fineTuneMode.value, 
-		isRotate
-	);
+	updateAndApplySingleBracketUserMatrix(name, matchData.fineTuneRecord.actorMatrix, fineTuneMode.value);
 
 	renderWindow.render();
 	// 子窗口跟着变
 	vtkSegToothContext.renderWindow.render();
 
 	// 重新计算距离 + 更新距离文字
-	updateDistanceLineActor(name, transCenter, transZNormal, transXNormal, renderer, renderWindow);
+	updateDistanceLineActor(name, transCenter, transZNormal, renderer, renderWindow);
 }
+
+//2023.2.19更新：
+/**
+ * @description 牙尖牙底小球微调（按键式）
+ * @param ifStraightenSimulation 是否处于排牙状态
+ */
+function adjustButtonMoveWidget(moveOption, selectedWidget, ifStraightenSimulation) {
+	let { moveStep, moveType } = moveOption;
+	moveHandle(selectedWidget, moveType, moveStep, ifStraightenSimulation);
+}
+
 const teethArrange = store.state.actorHandleState.teethArrange;
 function uploadDataOnline(uploadStateMessage, submit = false) {
 	/**
@@ -2081,7 +1871,6 @@ function uploadDataOnline(uploadStateMessage, submit = false) {
 		let { arrangeMatrix, dentalArchSettings, teethStandardAxis, dentalArchAdjustRecord } = teethArrangeData;
 		// let filterWord = teethType === "upper" ? "U" : "L";
 		let dataToMount = {
-			rotatePlusData: rotateMessageList,
 			bracketData: bracketData[teethType].map((item) => {
 				const {
 					name,
@@ -2096,26 +1885,13 @@ function uploadDataOnline(uploadStateMessage, submit = false) {
 					zNormal,
 				};
 			}),
-			bracketDataRotate: bracketData[teethType].map((item) => {
-				const {
-					name,
-					fineTuneRecordRotate: {
-						actorMatrix: { center, yNormal, zNormal },
-					},
-				} = item;
-				return {
-					name,
-					center,
-					yNormal,
-					zNormal,
-				};
-			}),
 			longAxisData: allActorList[teethType].distanceLine.map((item) => {
-				const { name, startPointRep, endPointRep } = item;
+				//2023.3.8更新：widgetManager管理
+				const { name, startPoint, endPoint } = item;
 				return {
 					name,
-					startCoor: startPointRep.getSphere().getCenter(),
-					endCoor: endPointRep.getSphere().getCenter(),
+					startCoor: startPoint,
+					endCoor: endPoint,
 				};
 			}),
 			teethArrangeData: {
@@ -2128,18 +1904,8 @@ function uploadDataOnline(uploadStateMessage, submit = false) {
 				dentalArchSettings: dentalArchSettings[teethType],
 				teethStandardAxis: teethStandardAxis[teethType],
 			},
-
 			teethAxisFinetuneRecord: teethAxisFinetuneRecord[teethType], // 初始的牙齿坐标系 + 后续的咬合调整构成最终矩阵
 			dentalArchAdjustRecord: dentalArchAdjustRecord[teethType].resetCenters,
-			teethRootData: allActorList[teethType].rootGenerate.length>0 ? allActorList[teethType].root.map((item) => {
-				const { toothName, rootRep } = item;
-				return {
-					toothName,
-					bottomSphereCenter: rootRep.getCenters()[0],
-					topSphereCenter: rootRep.getCenters()[1],
-					radiusSphereCenter: rootRep.getCenters()[2],
-				};
-			}):[],
 		};
 		uploadCurrentData(
 			toRaw(stlObj.teeth[teethType]),
@@ -2160,10 +1926,6 @@ function uploadDataOnline(uploadStateMessage, submit = false) {
 					teethType: "lower",
 					value: 0,
 				});
-				store.dispatch("userHandleState/updateSetDataCheckableFlag", {
-					teethType: teethType,
-					value: true,
-				});
 				if (submit) {
 					// 成功保存后进行数据递交
 					checkDataOnline();
@@ -2175,8 +1937,7 @@ function uploadDataOnline(uploadStateMessage, submit = false) {
 					});
 				}
 			},
-			(e) => {
-				console.log(e)
+			() => {
 				uploadStateMessage[teethType].failed(); // 显示失败信息弹窗
 				store.dispatch("userHandleState/updateUploadingProgress", {
 					teethType: "upper",
@@ -2194,21 +1955,6 @@ function uploadDataOnline(uploadStateMessage, submit = false) {
 		);
 	});
 }
-
-let hasRotateInfo = ref(false);
-const showRotateButton = inject('showRotateButton')
-/**
- * @description: 监视转矩列表是否变化，如果转矩列表中写入了rotate数据，说明当前托槽带有转矩信息
- * @return {*}
- * @author: ZhuYichen
- */
-watch(rotateMessageList,(newVal)=>{
-	if(newVal[0][0].rotate){
-		hasRotateInfo.value=true;
-		showRotateButton();
-	}
-})
-
 function checkDataOnline() {
 	const modelType = {
 		upper: "UpperConfig",
@@ -2268,145 +2014,6 @@ function checkDataOnline() {
 			}
 		);
 	});
-}
-const setDataCheckableFlag = computed(() => store.state.userHandleState.setDataCheckableFlag);
-
-// 保存，需要发送upload
-watch(setDataCheckableFlag, (newVal)=>{
-	if(newVal.upper&&newVal.lower){
-		// 修改方案是否已确认的标志位
-		setDataCheckable()
-		// 通知后台发送方案上传请求
-		sendPostRequest('upload')
-		store.dispatch("userHandleState/updateSetDataCheckableFlag", {
-			teethType: 'upper',
-			value: false,
-		});
-		store.dispatch("userHandleState/updateSetDataCheckableFlag", {
-			teethType: 'lower',
-			value: false,
-		});
-	}
-}, { deep: true })
-
-const isDataChecked = computed(() => store.state.userHandleState.isDataChecked);
-
-
-watch(isDataChecked, (newVal)=>{
-	// 递交，需要发送audit(存在一个问题，如果数据已被递交然后刷新页面，也会触发这个监视)
-	if(newVal.upper&&newVal.lower){
-		sendPostRequest('audit')
-	}
-	// 撤回，需要发送audit
-	if(!newVal.upper&&!newVal.lower){
-		sendPostRequest('audit')
-	}
-}, { deep: true })
-const isAnyDataCheckable = computed(() => store.getters["userHandleState/isAnyDataCheckable"]); 
-const userId = computed(() => store.state.userHandleState.userId);
-const orderId = computed(() => store.state.userHandleState.orderId);
-const patientBelongUserId = computed(() => store.state.userHandleState.patientBelongUserId);
-
-/**
- * @description: 2023.9.7更新：给管理员用户提供的功能，表明方案是不是已经确认完成。
- * @return {*}
- * @author: ZhuYichen
- */
-function setDataCheckable(){
-	const modelType = {
-		upper: "UpperConfig",
-		lower: "LowerConfig",
-	};
-	const flag = isAnyDataCheckable.value
-	uploadType.value.forEach((teethType) => {
-		sendRequestWithToken({
-			method: "POST",
-			url: window.linkConfig.checkDataApi,
-			data: {
-				patientUid: patientUID.value,
-				modelType: modelType[teethType],
-				isUserCheckable: flag?"1":"0",
-			},
-		}).then(
-			(res) => {
-
-			},
-			() => {
-
-			}
-		);
-	});
-	// 2023.11.13更新：如果方案已确认，还需要给舒雅发个通知；
-	// 该功能目前只对ID为VIPMMM001的用户有效
-	// if(patientBelongUserId.value == 'vipmmm001'){
-	// 	if(flag){
-	// 		sendRequestWithToken({
-	// 			method: "POST",
-	// 			url: window.linkConfig.suyaUploadDesignApi,
-	// 			data: {
-	// 				patientId: patientUID.value,
-	// 				orderId: orderId.value,
-	// 			},
-	// 		}).then(
-	// 			(res) => {
-	// 				console.log(res)
-	// 			},
-	// 			(error) => {
-	// 				console.log(error)
-	// 			}
-	// 		);
-	// 	}
-	// }
-}
-
-/**
- * @description: 通知后端发送方案上传/医生方案审核请求
- * @param {*} requestType 如果是upload，则说明点击的是保存，后端发送方案上传请求；如果是audit，则说明点击递交，后端发送医生方案审核通知请求
- * @return {*}
- * @author: ZhuYichen
- */
-function sendPostRequest(requestType){
-	sendRequestWithToken({
-			method: "POST",
-			url: window.linkConfig.sendPostRequestApi,
-			data: {
-				patientUid: patientUID.value,
-				requestType: requestType,
-			},
-		}).then(
-			(res) => {
-				console.log(res)
-			},
-			(error) => {
-				console.log(error)
-			}
-		);
-}
-
-/**
- * @description: 递交时，需要调舒雅的api，发送医生方案审核通知
- * @return {*}
- * @author: ZhuYichen
- */
-function suyaDoctorAudit(){
-	const flag = isAnyDataCheckable.value
-	if(patientBelongUserId.value == 'vipmmm001'){
-		sendRequestWithToken({
-			method: "POST",
-			url: window.linkConfig.suyaDoctorAuditApi,
-			data: {
-				patientId: patientUID.value,
-				auditStatus: flag,
-			},
-		}).then(
-			(res) => {
-				console.log(res)
-			},
-			(error) => {
-				console.log(error)
-			}
-		);
-	}
 }
 /**
  * @description 在提交数据后, 用当前微调位置覆盖原始微调位置
@@ -2514,6 +2121,8 @@ function rollbackCheckedData() {
 	}
 }
 
+//2023.3.7更新：为了解决首次进入排牙时小球不变换的问题，考虑在首次进入排牙时自动退出再进入，故引入一个flag来表明是否首次进入
+var firstArrangeFlag=true;
 /**
  * @description 在[通常模式]/[模拟排牙-托槽固定]/[模拟排牙-牙齿固定]中切换
  * 对 托槽,牙齿,坐标轴,距离线,距离文字,轴点反映射,牙弓线 setUserMatrix
@@ -2526,14 +2135,9 @@ function applyUserMatrixWhenSwitchMode(fromMode, toMode, render = false) {
 	updateApplyUserMatrixWhenSwitchMode(fromMode, toMode, toRaw(loadedBracketNameList));
 	// 变换actor矩阵
 	for (let teethType of ["upper", "lower"]) {
-		const { tooth, bracket, toothAxis, distanceLine, arch, rootGenerate } = allActorList[teethType];
+		const { tooth, bracket, toothAxis, distanceLine, arch } = allActorList[teethType];
 		// 牙齿
 		tooth.forEach((item) => {
-			const { name, actor } = item;
-			actor.setUserMatrix(applyCalMatrix.tad[name]);
-		});
-		// 牙根
-		rootGenerate.forEach((item) => {
 			const { name, actor } = item;
 			actor.setUserMatrix(applyCalMatrix.tad[name]);
 		});
@@ -2552,22 +2156,23 @@ function applyUserMatrixWhenSwitchMode(fromMode, toMode, render = false) {
 		distanceLine.forEach((item) => {
 			const {
 				name,
-				lineActorItem: { lineActor, planeActor, psMapper },
-				startPointRep,
-				endPointRep,
+				lineActorItem: { lineActor, psMapper },
+				//2023.2.7更新
+				startPointWidget,
+				endPointWidget,
 			} = item;
 			// 距离线
 			lineActor.setUserMatrix(applyCalMatrix.tad[name]);
-			// 垂面
-			planeActor.setUserMatrix(applyCalMatrix.tad[name]);
 			// 距离文字
 			psMapper.setMatrix2(applyCalMatrix.tad[name]);
 			// 轴点反映射
-			// startPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[name]); // 设置其中的invMatrix2矩阵
-			// endPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[name]);
 			// 依赖点集
-			startPointRep.getActor().setUserMatrix(applyCalMatrix.tad[name]);
-			endPointRep.getActor().setUserMatrix(applyCalMatrix.tad[name]);
+			// startPointWidget.getActor().setUserMatrix(applyCalMatrix.tad[name]);
+			// endPointWidget.getActor().setUserMatrix(applyCalMatrix.tad[name]);
+			if(handleInfoGet.startPointWidgetHandle&&name==handleInfoGet.toothName){
+				handleInfoGet.startPointWidgetHandle.getRepresentations()[0].getActor().setUserMatrix(applyCalMatrix.tad[handleInfoGet.toothName]);
+				handleInfoGet.endPointWidgetHandle.getRepresentations()[0].getActor().setUserMatrix(applyCalMatrix.tad[handleInfoGet.toothName]);
+			}
 		});
 		// 牙弓线
 		if (arch.actor) {
@@ -2579,6 +2184,53 @@ function applyUserMatrixWhenSwitchMode(fromMode, toMode, render = false) {
 		// 由于共享actor, 只要牙齿矩阵变换子窗口就会受到共同影响, 此处通过重置视角来抵消矩阵变换的影响
 		segToothWindowFlush();
 	}
+	// 2023.3.7更新：首次进入排牙时，自动退出进入一次
+	if(firstArrangeFlag){
+		firstArrangeFlag=false;
+		updateCurrentMode('straightenSimulation', false)
+		setTimeout(() => {
+			updateCurrentMode('straightenSimulation', true)
+		}, 0);
+	}
+}
+
+//2023.3.7更新：在下拉列表里选择想要调整的widget后，activate相应的小球
+function setHandleActive(selectedWidget){
+	if (!handleInfoGet.startPointWidgetHandle){
+		return
+	}
+	if(selectedWidget=='startPoint'){
+		handleInfoGet.startPointWidgetHandle.getRepresentations()[0].getRepresentationStates()[0].setActive(true)
+		handleInfoGet.endPointWidgetHandle.getRepresentations()[0].getRepresentationStates()[0].setActive(false)
+	}else if(selectedWidget=='endPoint'){
+		handleInfoGet.startPointWidgetHandle.getRepresentations()[0].getRepresentationStates()[0].setActive(false)
+		handleInfoGet.endPointWidgetHandle.getRepresentations()[0].getRepresentationStates()[0].setActive(true)
+	}else{
+		handleInfoGet.startPointWidgetHandle.getRepresentations()[0].getRepresentationStates()[0].setActive(false)
+		handleInfoGet.endPointWidgetHandle.getRepresentations()[0].getRepresentationStates()[0].setActive(false)
+	}
+	vtkContext.renderWindow.render()
+}
+
+function updateCurrentMode(mode, value) {
+	if (mode === "straightenSimulation" && value === false) {
+		store.dispatch("actorHandleState/updateCurrentShowPanel", -1);
+	}
+	store.dispatch("actorHandleState/updateCurrentMode", {
+		[mode]: value,
+	});
+}
+
+function printCoords(){
+	// console.log(vtkContext)
+	const fpsMonitor = vtkFPSMonitor.newInstance();
+	console.log(fpsMonitor)
+	fpsMonitor.setContainer(vtkContainer.value);
+	fpsMonitor.setRenderWindow(vtkContext.renderWindow);
+	widgetManager.releaseFocus(widget);
+	const widget = vtkSphereWidget.newInstance();
+	const widgetHandle = widgetManager.addWidget(widget);
+	widgetManager.grabFocus(widget);
 }
 
 /**
@@ -2589,17 +2241,16 @@ function applyUserMatrixWhenSwitchMode(fromMode, toMode, render = false) {
  * @param newFineTuneRecord 新的微调位置
  * @param currMode 当前模式
  */
-function updateAndApplySingleBracketUserMatrix(bracketName, newFineTuneRecord, currMode, isRotate=false) {
+function updateAndApplySingleBracketUserMatrix(bracketName, newFineTuneRecord, currMode) {
 	// ---寻找这颗牙齿相关的所有actor(根据表格, 托槽微调不可能影响牙弓线, 不予考虑)---
 	const matchItem = {
 		teethType: "upper",
 		tooth: [],
-		rootGenerate: [],
 		bracket: [],
 		toothAxis: [],
 		distanceLine: [],
 	};
-	for (let typeKey of ["tooth", "bracket", "toothAxis", "distanceLine", "rootGenerate"]) {
+	for (let typeKey of ["tooth", "bracket", "toothAxis", "distanceLine"]) {
 		for (let teethType of ["upper", "lower"]) {
 			const filteredItem = allActorList[teethType][typeKey].filter((item) => item.name === bracketName);
 			if (filteredItem.length > 0) {
@@ -2618,8 +2269,7 @@ function updateAndApplySingleBracketUserMatrix(bracketName, newFineTuneRecord, c
 		}
 	}
 	// 如果没有pre记录, 即未进入过模拟排牙, 则将pre位置设置为托槽position(托槽加载进去的初始位置)
-	// 如果是转矩操作，那么操作参考的初始位置永远都是一开始托槽的初始位置，与所有的平移和排牙无关
-	if (!preBracketPosition||isRotate) {
+	if (!preBracketPosition) {
 		for (let teethType of ["upper", "lower"]) {
 			bracketData[teethType].forEach((item) => {
 				const { name, position } = item;
@@ -2635,26 +2285,19 @@ function updateAndApplySingleBracketUserMatrix(bracketName, newFineTuneRecord, c
 		matchItem.teethType,
 		preBracketPosition,
 		newFineTuneRecord,
-		currMode,
-		isRotate,
+		currMode
 	);
 	// 转换数据
 	// -设置
 	if (needToUpdate.tad) {
 		// 牙齿
 		matchItem.tooth.actor.setUserMatrix(applyCalMatrix.tad[bracketName]);
-		// 牙根
-		if(matchItem.rootGenerate.actor){
-			matchItem.rootGenerate.actor.setUserMatrix(applyCalMatrix.tad[bracketName]);
-		}
 		// 坐标轴
 		matchItem.toothAxis.actors.forEach((actor) => {
 			actor.setUserMatrix(applyCalMatrix.tad[bracketName]);
 		});
 		// 距离线
 		matchItem.distanceLine.lineActorItem.lineActor.setUserMatrix(applyCalMatrix.tad[bracketName]);
-		// 垂面
-		matchItem.distanceLine.lineActorItem.planeActor.setUserMatrix(applyCalMatrix.tad[bracketName]);
 		// 距离文字
 		matchItem.distanceLine.lineActorItem.psMapper.setMatrix2(applyCalMatrix.tad[bracketName]);
 	}
@@ -2664,13 +2307,18 @@ function updateAndApplySingleBracketUserMatrix(bracketName, newFineTuneRecord, c
 	}
 	if (needToUpdate.sphereReversrProj) {
 		// 轴点反映射
-		matchItem.distanceLine.startPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[bracketName]);
-		matchItem.distanceLine.endPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[bracketName]);
+		// matchItem.distanceLine.startPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[bracketName]);
+		// matchItem.distanceLine.endPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[bracketName]);
 	}
 	if (needToUpdate.dependingTrans) {
 		// 依赖点集
-		matchItem.distanceLine.startPointRep.getActor().setUserMatrix(applyCalMatrix.tad[bracketName]);
-		matchItem.distanceLine.endPointRep.getActor().setUserMatrix(applyCalMatrix.tad[bracketName]);
+		// 2023.2.22更新：改为widgetManager
+		// matchItem.distanceLine.startPointRep.getActor().setUserMatrix(applyCalMatrix.tad[bracketName]);
+		// matchItem.distanceLine.endPointRep.getActor().setUserMatrix(applyCalMatrix.tad[bracketName]);
+		if(handleInfoGet.startPointWidgetHandle&&bracketName==handleInfoGet.toothName){
+			handleInfoGet.startPointWidgetHandle.getRepresentations()[0].getActor().setUserMatrix(applyCalMatrix.tad[handleInfoGet.toothName]);
+			handleInfoGet.endPointWidgetHandle.getRepresentations()[0].getActor().setUserMatrix(applyCalMatrix.tad[handleInfoGet.toothName]);
+		}
 	}
 	// -渲染
 	vtkContext.renderWindow.render();
@@ -2690,7 +2338,464 @@ function initMatrixWhenTeethAxisSphereGenerated() {
 	}
 }
 
-let tempSaveData = {}
+
+function renderPolyData(postPolyData){
+	const polyData = vtkPolyData.newInstance();
+	polyData.getPoints().setData(postPolyData.pointsData);
+	polyData.getPolys().setData(postPolyData.polysData);
+	const mapper = vtkMapper.newInstance();
+	mapper.setInputData(polyData);
+	const actor = vtkActor.newInstance();
+	actor.setMapper(mapper);
+	return actor;
+}
+
+function renderLinePolyData(postPolyData){
+	const polyData = vtkPolyData.newInstance();
+	polyData.getPoints().setData(postPolyData.pointsData);
+	polyData.getLines().setData(postPolyData.linesData);
+	const tubeFilter = vtkTubeFilter.newInstance();
+    tubeFilter.setInputData(polyData);
+    tubeFilter.setRadius(0.1);
+    tubeFilter.update();
+	const mapper = vtkMapper.newInstance();
+	mapper.setInputData(tubeFilter.getOutputData());
+	const intersectionActor = vtkActor.newInstance();
+	intersectionActor.setMapper(mapper);
+	intersectionActor.getProperty().setColor(1, 0, 0);
+    intersectionActor.getMapper().setResolveCoincidentTopologyToPolygonOffset();
+    intersectionActor
+      .getMapper()
+      .setResolveCoincidentTopologyLineOffsetParameters(-1, -1);
+	  return intersectionActor;
+}
+
+let teethPolyDataAfterTransform = {}; //存放用于碰撞检测的整个上下颌牙polydata
+let singleToothAfterTransform = {}; //存放单个牙齿的变换后polydata
+
+/**
+ * @description 用于计算空间距离
+ */
+function sp_dist(a, b) {
+    return Math.sqrt(Math.pow((a[0] - b[0]), 2) + Math.pow((a[1] - b[1]), 2) + Math.pow((a[2] - b[2]), 2));
+}
+
+
+/**
+ * @description 检索邻域
+ */
+function retrieve_neighbors(eps, point, cluster) {
+    var neighbors = [];     // list of neighbor
+    for (var iter = 0; iter < cluster.length; iter++) {
+        var dist = sp_dist(point, cluster[iter]);
+//        var dist2 = tp_dist(point, cluster[iter]);
+        if (dist <= eps) {
+            neighbors.push(iter);
+        }
+    }
+    return neighbors;
+}
+
+
+/**
+ * @description DBSCAN聚类
+ */
+function DBSCAN(X, eps, MinPts) {
+    var cluster_label = 0; // label meaning: 0:unmarked; 1,2,3,...:cluster label; "noise":noise
+    var labels = new Array(X.length).fill(0); // new an 0 array to store labels
+    var clusters = []; // final output
+ 
+    // clustering data points
+    for (var i = 0; i < X.length; i++) {
+        var neighbors = retrieve_neighbors(eps, X[i], X);
+ 
+        if (neighbors.length < MinPts) {
+            // if it is unmarked, mark it "noise"
+            if (labels[i] === 0) {
+                labels[i] = "noise";
+            }
+        } else {
+            cluster_label += 1;  // construct a new cluster
+            var cluster = [];   // construct cluster
+ 
+            // mark label for all unmarked neighbors
+            for (var j1 = 0; j1 < neighbors.length; j1++) {
+                // if no other labels
+                if (labels[neighbors[j1]] === 0 || labels[neighbors[j1]] === "noise") {
+                    labels[neighbors[j1]] = cluster_label;
+                    cluster.push(neighbors[j1]);
+                }
+            }
+ 
+            // check the sub-circle of all objects
+            while (neighbors.length !== 0) {
+                var j2;
+                j2 = neighbors.pop();
+                var sub_neighbors = retrieve_neighbors(eps, X[j2], X);
+ 
+                // mark all unmarked neighbors
+                if (sub_neighbors.length >= MinPts) {
+                    for (var k = 0; k < sub_neighbors.length; k++) {
+                        // if no other labels 
+                        if (labels[sub_neighbors[k]] === 0 || labels[sub_neighbors[k]] === "noise") {
+                            neighbors.push(sub_neighbors[k]);
+                            labels[sub_neighbors[k]] = cluster_label;
+                            cluster.push(sub_neighbors[k]);
+                        }
+                    }
+                }
+            }
+ 
+            // remove cluster of small size
+            if (cluster.length < MinPts) {
+                for (var j3 = 0; j3 < X.length; j3++) {
+                    if (labels[j3] === cluster_label) {
+                        labels[j3] = "noise";
+                    }
+                }
+            } else {
+                clusters.push(cluster);
+            }
+        }
+    }
+ 
+    //console.log(clusters);
+    return clusters;
+}
+
+/**
+ * @description 求凸包
+ */
+ function multiply(p0,p1,p2){
+    return((p1.x-p0.x)*(p2.y-p0.y)-(p2.x-p0.x)*(p1.y-p0.y)); 
+}
+function distance_no_sqrt(p1,p2)
+{
+    //return(sqrt((p1.x-p2.x)*(p1.x-p2.x)+(p1.y-p2.y)*(p1.y-p2.y))); 
+    return((p1.x-p2.x)*(p1.x-p2.x)+(p1.y-p2.y)*(p1.y-p2.y)); 
+}
+function convexHull(pointSet,ch){
+// 这里会修改pointSet
+	var n = pointSet.length
+    var i,j,k=0,top=2;
+    var tmp=new Object();
+    // 找到一个基点，基本就是保证最下面最左面的点
+    for(i=1;i<n;i++){
+        if( (pointSet[i].y<pointSet[k].y) || 
+            ( (pointSet[i].y==pointSet[k].y) && (pointSet[i].x<pointSet[k].x) ) 
+          ){
+            k=i;
+        }
+    }
+
+    tmp=pointSet[0];
+    pointSet[0]=pointSet[k];
+    pointSet[k]=tmp; 
+
+    var use=n;
+    for (i=1;i<use-1;i++){
+        k=i;
+        for (j=i+1;j<use;j++){
+            var direct=multiply(pointSet[0],pointSet[k],pointSet[j]);
+            if(direct>0){
+                k=j;
+            }else if(direct==0){
+                // k j 同方向
+                var dis=distance_no_sqrt(pointSet[0],pointSet[j])-distance_no_sqrt(pointSet[0],pointSet[k]);
+                use--; // 也就是不要了
+                if(dis>0){
+                    // 保留j
+                    // 把 k 就不要了
+                    pointSet[k]=pointSet[j];
+                    pointSet[j]=pointSet[use];
+                    j--;
+                }else{
+                    tmp=pointSet[use];
+                    pointSet[use]=pointSet[j];
+                    pointSet[j]=tmp;
+                }
+            }
+        }
+        tmp=pointSet[i];
+        pointSet[i]=pointSet[k];
+        pointSet[k]=tmp;
+    }
+
+    ch.push(pointSet[0]);
+    ch.push(pointSet[1]);
+    ch.push(pointSet[2]);
+    for (i=3;i<use;i++){
+        while ( !(multiply(pointSet[i],ch[top-1],ch[top]) < 0 ) ){
+            top--;
+            ch.pop();
+        }
+        top++;
+        ch.push(pointSet[i]);
+    }
+}
+
+/**
+ * @description 碰撞子线程的onmessage函数
+ */
+const collisionDetectWorkerOnmsg = function(event){
+			const {
+				data: {postIntersectionPolyData, postObbPolyData1, postObbPolyData2}
+			} = event;
+			const {renderWindow,renderer} = vtkContext;
+			// if (allActorList.upper.OBB){
+			// 	renderer.removeActor(allActorList.upper.OBB)
+			// }
+			// if (allActorList.lower.OBB){
+			// 	renderer.removeActor(allActorList.lower.OBB)
+			// }
+			// if (allActorList.intersection){
+			// 	renderer.removeActor(allActorList.intersection)
+			// }
+			// if (allActorList.lower.collisionTeeth.length!=0){
+			// 	allActorList.lower.collisionTeeth.forEach((value)=>{
+			// 		renderer.removeActor(value)
+			// 	})
+			// 	allActorList.lower.collisionTeeth=[];
+			// }
+			// if (allActorList.upper.collisionTeeth.length!=0){
+			// 	allActorList.upper.collisionTeeth.forEach((value)=>{
+			// 		renderer.removeActor(value)
+			// 	})
+			// 	allActorList.upper.collisionTeeth=[];
+			// }
+			// const obbActor1 = renderPolyData(postObbPolyData1);
+			// obbActor1.getProperty().setOpacity(0.3);
+			// obbActor1.getProperty().setEdgeVisibility(1);
+			// const obbActor2 = renderPolyData(postObbPolyData2);
+			// obbActor2.getProperty().setOpacity(0.3);
+			// obbActor2.getProperty().setEdgeVisibility(1);
+			const intersectionActor = renderLinePolyData(postIntersectionPolyData)
+
+			//2023.2.7:分离曲线，采用DBSCAN聚类
+			var insectionPoints = [];  // 转二维数组
+			for (var i = 0; i < postIntersectionPolyData.pointsData.length; i = i + 3) {
+				insectionPoints.push(postIntersectionPolyData.pointsData.slice(i, i + 3))
+			}
+			var insectionClusters = DBSCAN(insectionPoints, 0.5, 10)
+
+			// 分别给上下颌牙的每个牙齿取一个点
+			var lowerRandomTeethPoint = {};
+			var upperRandomTeethPoint = {};
+			Object.keys(singleToothAfterTransform).forEach((value)=>{
+				if (value[0]=='L'){
+					lowerRandomTeethPoint[value]=[
+					singleToothAfterTransform[value].getPoints().getData()[0],
+					singleToothAfterTransform[value].getPoints().getData()[1],
+					singleToothAfterTransform[value].getPoints().getData()[2]]
+				}
+				if (value[0]=='U'){
+					upperRandomTeethPoint[value]=[
+					singleToothAfterTransform[value].getPoints().getData()[0],
+					singleToothAfterTransform[value].getPoints().getData()[1],
+					singleToothAfterTransform[value].getPoints().getData()[2]]
+				}
+			})
+			for (let teethType of ['lower', 'upper']){
+				insectionClusters.forEach((value)=>{
+					// 计算交线的z坐标上下界，用于排除范围外的点
+					var zCoords = value.map((index)=>{
+						return postIntersectionPolyData.pointsData[index*3+2]
+					})
+					var zmax = Math.max(...zCoords)
+					var zmin = Math.min(...zCoords)
+					// 构造xy平面上的多边形
+					var vertices = value.map((index)=>{
+						return {
+							x:postIntersectionPolyData.pointsData[index*3],
+							y:postIntersectionPolyData.pointsData[index*3+1],
+						}
+					})
+					var hull=[];
+					convexHull(vertices, hull)
+					var hullList = [];
+					hull.forEach((value)=>{
+						hullList.push(value.x)
+						hullList.push(value.y)
+						hullList.push(0)
+					})
+					// console.log(vertices)
+					// console.log(hull)
+					// var curLinesData = [];
+					// hull.forEach((curValue,index,array)=>{
+					// 	if (index<array.length-1){
+					// 		curLinesData.push(2);
+					// 		curLinesData.push(index);
+					// 		curLinesData.push(index+1)
+					// 	}else{
+					// 		curLinesData.push(2);
+					// 		curLinesData.push(index);
+					// 		curLinesData.push(0)
+					// 	}	
+					// })
+					// const curActor = renderLinePolyData({
+					// 	pointsData:hullList,
+					// 	linesData:curLinesData
+					// })
+					// renderer.addActor(curActor)
+					
+					var bounds = {
+						maxx:-1000,
+						maxy:-1000,
+						minx:1000,
+						miny:1000
+					}
+					hull.forEach((value)=>{
+						if (value.x>bounds.maxx){
+							bounds.maxx = value.x
+						}
+						if (value.x<bounds.minx){
+							bounds.minx = value.x
+						}
+						if (value.y>bounds.maxy){
+							bounds.maxy = value.y
+						}
+						if (value.y<bounds.miny){
+							bounds.miny = value.y
+						}
+					})
+
+					var randomLinePoint = [
+						postIntersectionPolyData.pointsData[value[0]*3],
+						postIntersectionPolyData.pointsData[value[0]*3+1],
+						postIntersectionPolyData.pointsData[value[0]*3+2]
+					]
+					// 寻找最匹配的牙齿
+					var sortDistance;
+					if (teethType=='lower'){
+						sortDistance = Object.keys(lowerRandomTeethPoint).sort((a,b)=>{
+							return (sp_dist(lowerRandomTeethPoint[a], randomLinePoint)-sp_dist(lowerRandomTeethPoint[b], randomLinePoint))
+						})
+					}else{
+						sortDistance = Object.keys(upperRandomTeethPoint).sort((a,b)=>{
+							return (sp_dist(upperRandomTeethPoint[a], randomLinePoint)-sp_dist(upperRandomTeethPoint[b], randomLinePoint))
+						})
+					}
+					var findFlag = 0; // 指示是否已找到正确的牙齿
+					var pointIndexInPolygon = { // 根据深度划分成三种颜色
+						red: [],
+						yellow: [],
+						green: [],
+					}
+					var correctTooth;
+					sortDistance.forEach((value)=>{
+						if (findFlag == 1){
+							return;
+						}
+						var curTooth = singleToothAfterTransform[value].getPoints().getData()
+						for (let i=0; i<curTooth.length/3; i++){
+							if (vtkPolygon.pointInPolygon(
+								[curTooth[i*3],curTooth[i*3+1],0],
+								hullList,
+								[bounds.minx,bounds.maxx,bounds.miny,bounds.maxy,0,0],
+								[0,0,1]
+							)){
+								if (teethType=='lower'&&curTooth[i*3+2]>zmin){
+									if(curTooth[i*3+2]<=zmax-0.1&&curTooth[i*3+2]>zmax-0.2){
+										pointIndexInPolygon.yellow.push(i)
+									}else if(curTooth[i*3+2]<=zmax-0.2){
+										pointIndexInPolygon.red.push(i)
+									}else{
+										pointIndexInPolygon.green.push(i)
+									}
+								}
+								if (teethType=='upper'&&curTooth[i*3+2]<zmax){
+									if(curTooth[i*3+2]>=zmin+0.1&&curTooth[i*3+2]<zmin+0.2){
+										pointIndexInPolygon.yellow.push(i)
+									}else if(curTooth[i*3+2]>=zmin+0.2){
+										pointIndexInPolygon.red.push(i)
+									}else{
+										pointIndexInPolygon.green.push(i)
+									}
+								}
+								// pointIndexInPolygon.push(i)
+							}
+						}
+						if(pointIndexInPolygon.green.length!=0){
+							findFlag = 1;// 已找到正确牙齿
+							correctTooth = value;
+						}
+					})
+					// pointIndexInPolygon = [pointIndexInPolygon[0]]
+					var curPolysData = singleToothAfterTransform[correctTooth].getPolys().getData()
+					var curPointsData = singleToothAfterTransform[correctTooth].getPoints().getData()
+					//显示查询到的点
+					// pointIndexInPolygon.forEach((value)=>{
+					// 	const sphereSource = vtkSphereSource.newInstance({
+					// 		center: [curPointsData[value*3],curPointsData[value*3+1],curPointsData[value*3+2]],
+					// 		radius:0.01
+					// 	});
+					// 	const actor = vtkActor.newInstance();
+					// 	const mapper = vtkMapper.newInstance();
+					// 	mapper.setInputConnection(sphereSource.getOutputPort());
+					// 	actor.setMapper(mapper);
+					// 	actor.getProperty().setColor([0,1,0])
+					// 	renderer.addActor(actor);
+
+					// })
+					// 渲染
+					for (let depth of ['green', 'yellow', 'red']){
+						if (!pointIndexInPolygon[depth]){
+							continue;
+						}
+						var insectionPolysData = findInsectionPolysData(pointIndexInPolygon[depth], curPolysData);
+						// 通过面片找到坐标
+						var {reArrangePointsData, reArrangePolysData} = findReArrangeData(insectionPolysData, curPointsData, teethType)
+						const actor = renderPolyData({pointsData:reArrangePointsData, polysData:reArrangePolysData})
+						if (depth=='green'){
+							actor.getProperty().setColor([0,1,0])
+						}else if (depth=='yellow'){
+							actor.getProperty().setColor([1,1,0])
+						}else{
+							actor.getProperty().setColor([1,0,0])
+						}
+						
+						if (teethType=='lower'){
+							allActorList.lower.collisionTeeth.push(actor)
+							if (props.actorInScene.lower){
+								renderer.addActor(actor)
+							}
+						}else{
+							allActorList.upper.collisionTeeth.push(actor)
+							if (props.actorInScene.upper){
+								renderer.addActor(actor)
+							}
+						}	
+					}	
+				})
+			}
+			// allActorList.upper.OBB = obbActor1;
+			// allActorList.lower.OBB = obbActor2;
+			allActorList.intersection = intersectionActor;
+			// renderer.addActor(allActorList.upper.OBB)
+			// renderer.addActor(allActorList.lower.OBB)
+			// renderer.addActor(allActorList.intersection)
+			renderWindow.render();
+			isFinish.value=true;
+		}
+
+/**
+ * @description 向碰撞子线程postMessage
+ */
+function postMsgToCollisionDetectWorker(collisionDetectWorker){
+	teethPolyDataAfterTransform.upper=
+		calculatePolydataAfterTransform('upper');
+	teethPolyDataAfterTransform.lower=
+		calculatePolydataAfterTransform('lower');
+	if (teethPolyDataAfterTransform.upper&&teethPolyDataAfterTransform.lower){
+		//直接post vtkPolyData对象会报错，拆分成数组后传递
+		isFinish.value=false;
+		collisionDetectWorker.postMessage({
+		postUpperTeethPolyData: teethPolyDataAfterTransform.upper,
+		postLowerTeethPolyData: teethPolyDataAfterTransform.lower,
+		})
+	}
+}
+
 /**
  * @description 在牙齿咬合位置调整时调用, 用于更新mat4并重新设置相关userMatrix
  * 根据坐标轴和移动方向+移动距离计算新的center
@@ -2739,11 +2844,17 @@ function fineTuneTeethPosition({ moveType, moveStep, teethType }) {
 					}
 				}
 			};
+			collisionDetectWorker = new CollisionDetectWorker();
+			collisionDetectWorker.onmessage = collisionDetectWorkerOnmsg;
+			postMsgToCollisionDetectWorker(collisionDetectWorker)
 			return;
 		}
 		case "EXIT_PANEL": {
+			// 清除碰撞相关的actor
+			removeCollisionActor()
 			// 退出面板时销毁子线程
 			teethBiteworker.terminate();
+			collisionDetectWorker.terminate();
 			releaseTeethPositionAdjustMoveType();
 			return;
 		}
@@ -2799,28 +2910,6 @@ function fineTuneTeethPosition({ moveType, moveStep, teethType }) {
 	const { center, xNormal, yNormal, zNormal } = teethAxisFinetuneRecord[teethType];
 	// 计算变换后的结果, 更新到teethAxisFinetuneRecord
 	switch (moveType) {
-		case "TEMPSAVE": {
-			// 深拷贝
-			tempSaveData = JSON.parse(JSON.stringify({ center, xNormal, yNormal, zNormal }))
-			break;
-		}
-		case "TEMPRESET": {
-			if (tempSaveData.center){
-				center[0] = tempSaveData.center[0]
-				center[1] = tempSaveData.center[1]
-				center[2] = tempSaveData.center[2]
-				xNormal[0] = tempSaveData.xNormal[0]
-				xNormal[1] = tempSaveData.xNormal[1]
-				xNormal[2] = tempSaveData.xNormal[2]
-				yNormal[0] = tempSaveData.yNormal[0]
-				yNormal[1] = tempSaveData.yNormal[1]
-				yNormal[2] = tempSaveData.yNormal[2]
-				zNormal[0] = tempSaveData.zNormal[0]
-				zNormal[1] = tempSaveData.zNormal[1]
-				zNormal[2] = tempSaveData.zNormal[2]
-			}
-			break;
-		}
 		case "RESET": {
 			teethAxisFinetuneRecord[teethType] = {
 				...teethAxisFinetuneRecord[teethType],
@@ -2921,7 +3010,125 @@ function fineTuneTeethPosition({ moveType, moveStep, teethType }) {
 	}
 	updateMat4(teethType);
 	updateDentalArchWidgetRecordAfterMatrixUpdate();
+	// console.log(toothPolyDatas['LL1'].getPoints().getData())
+	// console.log(toothPolyDatas['LL1'].getPolys().getData())
+	if (collisionDetectWorker!=null){
+		removeCollisionActor()
+		collisionDetectWorker.terminate() //如果上一次没计算完就已经再次变换位置，则直接中断之前的线程
+		collisionDetectWorker = new CollisionDetectWorker();
+		collisionDetectWorker.onmessage = collisionDetectWorkerOnmsg;
+		postMsgToCollisionDetectWorker(collisionDetectWorker)
+	}
 	releaseTeethPositionAdjustMoveType();
+}
+
+// 删除碰撞的actor
+function removeCollisionActor(){
+	const {renderWindow,renderer} = vtkContext;
+		if (allActorList.intersection){
+			renderer.removeActor(allActorList.intersection)
+		}
+		if (allActorList.lower.collisionTeeth.length!=0){
+			allActorList.lower.collisionTeeth.forEach((value)=>{
+				renderer.removeActor(value)
+			})
+			allActorList.lower.collisionTeeth=[];
+		}
+		if (allActorList.upper.collisionTeeth.length!=0){
+			allActorList.upper.collisionTeeth.forEach((value)=>{
+				renderer.removeActor(value)
+			})
+			allActorList.upper.collisionTeeth=[];
+		}
+		renderWindow.render()
+}
+
+
+function findInsectionPolysData(pointIndexInPolygon, curPolysData){
+	var insectionPolysData = [];
+	// 找到所有重叠的面片组成
+	for (let i=0;i<curPolysData.length/4;i++){
+		if(
+				pointIndexInPolygon.includes(curPolysData[i*4+1]) ||
+				pointIndexInPolygon.includes(curPolysData[i*4+2]) ||
+				pointIndexInPolygon.includes(curPolysData[i*4+3])
+		){
+			insectionPolysData.push(3)
+			insectionPolysData.push(curPolysData[i*4+1])
+			insectionPolysData.push(curPolysData[i*4+2])
+			insectionPolysData.push(curPolysData[i*4+3])
+		}
+	}
+	return insectionPolysData;
+}
+
+
+function findReArrangeData(insectionPolysData, curPointsData, teethType){
+	var reArrangePointsData = [];
+	var reArrangePolysData = [];
+	var offsetDisplay = teethType=='lower'?0.001:-0.001; // 由于面片重叠时有闪烁破碎现象，认为设置一个偏移量（vtkjs有该配置项，但修改后没有生效）
+	for(let i=0;i<insectionPolysData.length/4;i++){
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+1]*3])
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+1]*3+1])
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+1]*3+2]+offsetDisplay)
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+2]*3])
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+2]*3+1])
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+2]*3+2]+offsetDisplay)
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+3]*3])
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+3]*3+1])
+		reArrangePointsData.push(curPointsData[insectionPolysData[i*4+3]*3+2]+offsetDisplay)
+
+		reArrangePolysData.push(3)
+		reArrangePolysData.push(i*3)
+		reArrangePolysData.push(i*3+1)
+		reArrangePolysData.push(i*3+2)
+	}
+	return {reArrangePointsData, reArrangePolysData};
+}
+
+
+// 碰撞检测需要上下颌变换后的整体polydata
+function calculatePolydataAfterTransform(teethType){
+
+	const appendPolyData = vtkAppendPolyData.newInstance();
+	const emptyPolyData = vtkPolyData.newInstance();
+	appendPolyData.setInputData(emptyPolyData);
+
+	Object.keys(toothPolyDatas).filter((teethName)=>{
+		return teethName[0].toLowerCase() == teethType[0]
+	}).forEach((teethName)=>{
+		let toothPoints = toothPolyDatas[teethName].getPoints().getData()
+		let toothPointsAfterTransform = new Float32Array(
+			toothPoints
+		); //深拷贝单齿pointsData
+		const toothPolys = toothPolyDatas[teethName].getPolys().getData()
+		const tad = applyCalMatrix.tad[teethName]
+		// for (let i=0;i<toothPoints.length;i=i+3){
+		// 	toothPointsAfterTransform[i] = tad[0]*toothPoints[i]+tad[1]*toothPoints[i+1]+tad[2]*toothPoints[i+2]+tad[3];
+		// 	toothPointsAfterTransform[i+1] = tad[4]*toothPoints[i]+tad[5]*toothPoints[i+1]+tad[6]*toothPoints[i+2]+tad[7];
+		// 	toothPointsAfterTransform[i+2] = tad[8]*toothPoints[i]+tad[9]*toothPoints[i+1]+tad[10]*toothPoints[i+2]+tad[11];
+		// }
+		vtkMatrixBuilder
+			.buildFromDegree()
+			.setMatrix(tad)
+			.apply(toothPointsAfterTransform);
+		const polyData = vtkPolyData.newInstance();
+        polyData.getPoints().setData(toothPointsAfterTransform);
+        polyData.getPolys().setData(toothPolys);
+		singleToothAfterTransform[teethName] = polyData
+		// const {renderWindow,renderer} = vtkContext;
+		// const toothActor = renderPolyData({
+		// 	pointsData:toothPointsAfterTransform,
+		// 	polysData:toothPolys
+		// })
+		// renderer.addActor(toothActor)
+		// renderWindow.render();
+		appendPolyData.addInputData(polyData);
+	})
+	return {
+		pointsData:appendPolyData.getOutputData().getPoints().getData(),
+		polysData:appendPolyData.getOutputData().getPolys().getData(),
+	};
 }
 // 计算新的变换矩阵mat4
 function updateMat4(teethType) {
@@ -2931,16 +3138,10 @@ function updateMat4(teethType) {
 		toRaw(loadedBracketNameList[teethType]),
 		fineTuneMode.value
 	);
-
 	// 设置setUserMatrix
-	const { tooth, bracket, toothAxis, distanceLine, arch, teethAxisSphere, rootGenerate } = allActorList[teethType];
+	const { tooth, bracket, toothAxis, distanceLine, arch, teethAxisSphere } = allActorList[teethType];
 	// 牙齿
 	tooth.forEach((item) => {
-		const { name, actor } = item;
-		actor.setUserMatrix(applyCalMatrix.tad[name]);
-	});
-	// 牙根
-	rootGenerate.forEach((item) => {
 		const { name, actor } = item;
 		actor.setUserMatrix(applyCalMatrix.tad[name]);
 	});
@@ -2959,22 +3160,21 @@ function updateMat4(teethType) {
 	distanceLine.forEach((item) => {
 		const {
 			name,
-			lineActorItem: { lineActor, planeActor, psMapper },
+			lineActorItem: { lineActor, psMapper },
+			//2023.2.7更新
 			startPointRep,
 			endPointRep,
 		} = item;
 		// 距离线
 		lineActor.setUserMatrix(applyCalMatrix.tad[name]);
-		// 垂面
-		planeActor.setUserMatrix(applyCalMatrix.tad[name]);
 		// 距离文字
 		psMapper.setMatrix2(applyCalMatrix.tad[name]);
 		// 轴点反映射
-		startPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[name]); // 设置其中的invMatrix2矩阵
-		endPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[name]);
+		// startPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[name]); // 设置其中的invMatrix2矩阵
+		// endPointRep.setInvMatrix2(applyCalMatrix.sphereReversrProj[name]);
 		// 依赖点集
-		startPointRep.getActor().setUserMatrix(applyCalMatrix.tad[name]);
-		endPointRep.getActor().setUserMatrix(applyCalMatrix.tad[name]);
+		// startPointRep.getActor().setUserMatrix(applyCalMatrix.tad[name]);
+		// endPointRep.getActor().setUserMatrix(applyCalMatrix.tad[name]);
 	});
 	// 牙弓线
 	if (arch.actor) {
@@ -2995,13 +3195,12 @@ function updateMat4(teethType) {
 let enterAtInitTime = computed(() => store.state.actorHandleState.teethArrange.enterAtInitTime);
 let isArrangeDataComplete = computed(() => store.getters["actorHandleState/isArrangeDataComplete"]);
 // 进入模拟排牙
-let clickEnter = false;
 function openSimulationMode() {
 	if (arrangeTeethType.value.length === 0 || (isArrangeDataComplete.value && !enterAtInitTime.value)) {
 		// 不作任何排牙进入排牙模式, 条件:
 		// 1、双颌数据均不满足排牙要求
 		// 2、已经进行过排牙 + 不是首次进入
-		adjustActorWhenSwitchSimMode("enter", true);
+		adjustActorWhenSwitchSimMode("enter");
 		applyUserMatrixWhenSwitchMode("normal", simMode.value, true);
 	} else {
 		// 开始排牙, 条件:
@@ -3009,7 +3208,6 @@ function openSimulationMode() {
 		// 2、从零开始排牙 / 虽然已经有排牙数据但是本次为首次进入排牙模式
 		// * 从零 -> 完整排牙
 		// * 已有数据 -> 第一次还有牙弓线需要制造 -> 忽略步骤排牙
-		clickEnter = true;
 		forceUpdateArrange();
 	}
 }
@@ -3058,8 +3256,7 @@ watch(currentArrangeStep, (newVal) => {
 			},
 		});
 		// actor加入屏幕
-		adjustActorWhenSwitchSimMode("enter", clickEnter);
-		clickEnter=false;
+		adjustActorWhenSwitchSimMode("enter");
 		// 当前模式不是normal则在更新矩阵前先把所有数据转到normal(主要针对依赖点集,转换需要依赖旧矩阵)
 		if (forceUpdateAtMode !== "normal") {
 			applyUserMatrixWhenSwitchMode(forceUpdateAtMode, "normal", true);
@@ -3098,12 +3295,12 @@ watch(currentArrangeStep, (newVal) => {
 });
 // 退出模拟排牙
 function exitSimulationMode() {
-	adjustActorWhenSwitchSimMode("exit",1);
+	adjustActorWhenSwitchSimMode("exit");
 	// 退出一定是退到normal的
 	applyUserMatrixWhenSwitchMode(simMode.value, "normal", true);
 }
-function adjustActorWhenSwitchSimMode(switchType, clickEnter=false) {
-	const { addActorsList, delActorsList } = adjustActorWhenSwitchSimulationMode(switchType, props.actorInScene, userType.value, clickEnter);
+function adjustActorWhenSwitchSimMode(switchType) {
+	const { addActorsList, delActorsList } = adjustActorWhenSwitchSimulationMode(switchType, props.actorInScene);
 	actorInSceneAdjust(addActorsList, delActorsList);
 }
 // 强制更新模拟排牙
@@ -3134,18 +3331,164 @@ defineExpose({
 	fineTuneBracket,
 	uploadDataOnline,
 	rollbackCheckedData,
-	setDataCheckable,
-	suyaDoctorAudit,
+	adjustButtonMoveWidget,
+	setHandleActive,
 });
 </script>
 
 <style scoped lang="scss">
-.origin {
-	@import './viewerMainStyle.scss';
+$right-panel-width-normal: 250px;
+.container {
+	transition: 0.1s;
+	width: calc(100% - $right-panel-width-normal);
 	height: 100%;
+	background-color: ivory;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	.text-container {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
 }
-.new {
-	@import './viewerMainStyle2.scss';
+
+.right-side-menu {
+	transition: 0.1s;
+	opacity: 1;
+	width: $right-panel-width-normal;
 	height: 100%;
+	background-color: #e5e9e5;
+	position: absolute;
+	right: 0;
+	top: 0;
+	display: flex;
+	flex-direction: column;
+	z-index: 99;
+	overflow: hidden;
+	.distance-table {
+		display: flex;
+		width: calc(100% - 2px);
+		height: 33%;
+		background-color: aquamarine;
+		overflow-y: hidden;
+		border: 1px solid rgba(147, 112, 219, 0.7);
+		.dt-col {
+			max-width: calc(100% / 7);
+			flex: 0 0 calc(100% / 7);
+			float: left;
+			box-sizing: border-box;
+			.dt-row {
+				width: 100%;
+				height: 25%;
+				display: flex;
+				flex-wrap: wrap;
+				box-sizing: border-box;
+				position: relative;
+				.dt-name-box {
+					width: calc(100% - 2px);
+					height: calc(50% - 2px);
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					border: 1px solid rgba(158, 158, 198, 0.5);
+					background-color: #eaeaea;
+					user-select: none;
+					&:hover {
+						margin-top: -1px;
+						margin-left: -1px;
+						margin-bottom: -1px;
+						border: 2px solid rgb(158, 158, 198);
+						background-color: #d2ead2;
+					}
+				}
+				.dt-dist-box {
+					width: calc(100% - 2px);
+					height: calc(50% - 2px);
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					border: 1px solid rgba(158, 158, 158, 0.5);
+					background-color: #cccccc;
+				}
+				.dt-name-box span,
+				.dt-dist-box span {
+					transition: 0.1s;
+					font-size: 14px;
+				}
+				&.selected {
+					font-weight: 600;
+					.dt-dist-box {
+						background-color: #ffff69;
+					}
+				}
+			}
+		}
+	}
+	&.hide {
+		opacity: 0.6;
+		pointer-events: none;
+	}
+}
+
+.tooth-drag-window {
+	width: calc(100% - 2px);
+	height: 33%;
+	border: 1px solid rgba(147, 112, 219, 0.7);
+	.tooth-container {
+		width: 100%;
+		height: 100%;
+		background-color: ivory;
+		.pic-text-container {
+			position: absolute;
+			width: calc(100% - 2px);
+			height: calc(33% - 4px);
+		}
+	}
+}
+
+.bottom-drag-bar {
+	transition: 0.1s;
+	position: absolute;
+	height: 25px;
+	width: 100%;
+	bottom: -22px;
+	cursor: pointer;
+	background: linear-gradient(to right, rgba(128, 128, 128, 0.2) 50%, rgba(128, 128, 128, 0.8) 50%);
+	background-size: 200% 100%;
+	background-position: 0 0;
+	.drag-icon {
+		position: absolute;
+		top: 0;
+		right: 5px;
+		width: 25px;
+		height: 25px;
+		transition: 0.1s;
+		backface-visibility: hidden;
+		background-size: 100% 100%;
+	}
+	&:hover {
+		bottom: 0;
+		background-position: 100% 0;
+	}
+	&:active {
+		.drag-icon {
+			transform: translateX(-5px);
+		}
+	}
+	&.reverse {
+		.drag-icon {
+			transform: scaleX(-1);
+		}
+		&:active {
+			.drag-icon {
+				transform: scaleX(-1) translateX(-5px);
+			}
+		}
+	}
 }
 </style>

@@ -1,5 +1,5 @@
-import { onMounted, reactive, ref, watch, computed } from "vue";
-import { DEFAULT_PATIENTUID, bracketNameList, rotateConfigList } from "../static_config";
+import { onMounted, reactive, ref, watch } from "vue";
+import { DEFAULT_PATIENTUID } from "../static_config";
 import { useRoute } from "vue-router";
 import { useStore } from "vuex";
 import { projectToAxis } from "../utils/bracketFineTuneByTypedArray";
@@ -10,18 +10,14 @@ import vtkPlane from "@kitware/vtk.js/Common/DataModel/Plane";
 import vtkActor from "@kitware/vtk.js/Rendering/Core/Actor";
 import vtkMapper from "@kitware/vtk.js/Rendering/Core/Mapper";
 import vtkProperty from "@kitware/vtk.js/Rendering/Core/Property";
-import { normalize, cross, subtract, multiplyScalar, add } from "@kitware/vtk.js/Common/Core/Math";
+import { normalize, cross } from "@kitware/vtk.js/Common/Core/Math";
 
 import vtkImageMapper from "@kitware/vtk.js/Rendering/Core/ImageMapper";
 import vtkImageSlice from "@kitware/vtk.js/Rendering/Core/ImageSlice";
 import vtkImageHelper from "@kitware/vtk.js/Common/Core/ImageHelper";
-import vtkHandleWidget from "../reDesignVtk/reDesignHandleWidget";
-import vtkSphereHandleRepresentation from "../reDesignVtk/reDesignSphereHandleRepresentation";
 import Constants from "@kitware/vtk.js/Rendering/Core/ImageMapper/Constants";
 import distanceLineControl from "./distanceLineControl";
-import {
-    invertMatrix4x4,
-} from "./userMatrixControl";
+
 import { browserType } from "../utils/browserTypeDetection";
 
 const { SlicingMode } = Constants;
@@ -34,8 +30,9 @@ import {
     getRequestWithToken,
     sendRequestWithToken,
 } from "../utils/tokenRequest";
-import vtkRootHandleRepresentation from "../reDesignVtk/rootHandleWidget/RootHandleRepresentation";
-import rootHandleWidget from "../reDesignVtk/rootHandleWidget";
+// 2022.12.15更新：使用widgetManager管理小球
+import vtkSphereWidget from '../reDesignVtk/Widgets/Widgets3D/SphereWidget';
+
 
 export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
     const {
@@ -52,37 +49,27 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
     let allActorList = {
         upper: {
             // 上颌牙
-            teethWithGingiva: {}, // 牙龈
-            originGingiva: {},
+            teethWithGingiva: {}, // 牙齿+牙龈的全模型(如果显示牙龈则选择此actor)
             tooth: [], // 每颗分割牙齿的name, actor, mapper(如果隐藏牙龈则选择此actor)
-            originTooth: [], //2023.4.11更新，需要能够同时显示排牙前后的牙齿，用于保存原始牙列
             bracket: [], // 每个托槽的name, actor, mapper
-            originBracket: [],
             toothAxis: [], // 每颗分割牙齿的name, 坐标轴actors列表
             distanceLine: [], // 距离计算线(改变选择托槽时进行调整)
             arch: {}, // 牙弓线(每次重新排牙都会更新)
             teethAxisSphere: {}, // 牙齿标准坐标系(首次排牙完成后创建, 在调整上颌位置时显示)
-            OBB: {},
-            root: [], // 牙根圆锥
-            rootGenerate: [], //生成的牙根
-            originRoot: [], //和原始牙列位置相匹配的牙根
+            OBB: {}, // 整个上颌牙的OBB包围盒，碰撞检测时使用，不显示
+            collisionTeeth: [], // 碰撞检测时，每个碰撞牙齿碰撞部分的actor
         },
         lower: {
             // 下颌牙
-            teethWithGingiva: {}, // 牙龈
-            originGingiva: {},
+            teethWithGingiva: {}, // 牙齿+牙龈的全模型(如果显示牙龈则选择此actor)
             tooth: [], // 每颗分割牙齿的name, actor, mapper(如果隐藏牙龈则选择此actor)
-            originTooth: [], //2023.4.11更新，需要能够同时显示排牙前后的牙齿，用于保存原始牙列
             bracket: [], // 每个托槽的name, actor, mapper
-            originBracket: [],
             toothAxis: [], // 每颗分割牙齿的name, 坐标轴actors列表
             distanceLine: [], // 距离计算线
             arch: {}, // 牙弓线(每次重新排牙都会更新)
             teethAxisSphere: {}, // 牙齿标准坐标系(首次排牙完成后创建, 在调整下颌位置时显示)
-            OBB: {},
-            root: [], // 牙根圆锥
-            rootGenerate: [], //生成的牙根
-            originRoot: [], //和原始牙列位置相匹配的牙根
+            OBB: {}, // 整个下颌牙的OBB包围盒，碰撞检测时使用，不显示
+            collisionTeeth: [], // 碰撞检测时，每个碰撞牙齿碰撞部分的actor
         },
         picture: null,
         intersection: null
@@ -162,7 +149,7 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                     progress: "",
                 },
             },
-            // 制造轴线actor
+            // 完成上述9步后即为结束
             9: {
                 state: {
                     message: "正在制造上颌牙轴线模型......",
@@ -170,15 +157,7 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                     progress: "",
                 },
             },
-            // 制造牙根actor
             10: {
-                state: {
-                    message: "正在制造虚拟牙根模型......",
-                    type: "wait",
-                    progress: "",
-                },
-            },
-            11: {
                 state: {
                     message: "完成！",
                     type: "success",
@@ -259,23 +238,15 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                     progress: "",
                 },
             },
-            // 制造轴线actor
+            // 完成上述9步后即为结束
             9: {
                 state: {
-                    message: "正在制造上颌牙轴线模型......",
+                    message: "正在制造下颌牙轴线模型......",
                     type: "wait",
                     progress: "",
                 },
             },
-            // 制造牙根actor
             10: {
-                state: {
-                    message: "正在制造虚拟牙根模型......",
-                    type: "wait",
-                    progress: "",
-                },
-            },
-            11: {
                 state: {
                     message: "完成！",
                     type: "success",
@@ -378,33 +349,8 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         resize(); // 初始化画布大小
         window.addEventListener("resize", resize); // 添加窗口大小调整时自动调整画布大小
         initDistanceMessageList();
-        initRotateMessageList();
         startProgress();
     });
-
-    let rotateMessageList = reactive([]);
-    /**
-     * @description: 初始化转矩表格，用于在右侧转矩tab页上进行显示
-     * @return {*}
-     * @author: ZhuYichen
-     */
-    function initRotateMessageList(){
-        for (let i = 0; i < 7; i++) {
-            rotateMessageList.push([]); // 共7列数据
-        }
-        bracketNameList.forEach((name, index) => {
-            const rowId = index % 4; // 第几行 0123
-            const colId = Math.floor(index / 4); // 第几列 01234567
-            rotateMessageList[colId].push({
-                name,
-                key: index,
-                rowId,
-                colId,
-                rotate: undefined, //从配置文件中读取到的初始转矩
-                plus: 0, //转矩增减量
-            });
-        });
-    }
 
     // textCanvas默认大小300*150, 需要手动修改
     function resize() {
@@ -444,7 +390,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         getCurrentLoginUser(); // step1-1
     }
 
-    const userId = computed(() => store.state.userHandleState.userId);
     /**
      * @description step1-1 获取当前登录用户名, 如果login/没有登录则是用token登录, 用户名在地址栏中, 如果是正常登录方式则login/能直接取得信息
      */
@@ -461,14 +406,11 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                     "userHandleState/updateUserId",
                     resp.data.data.userInfo.userId
                 );
-
-            }
-            if (authConfig.id){
+            } else {
                 // login/没有登录则是用token登录, 用户名在地址栏中
                 store.dispatch("userHandleState/updateUserId", authConfig.id);
             }
             getIfRollBackAuthorized(); // step1-2
-            getUserThemeType(userId.value); // step1-2-2
         });
     }
 
@@ -488,43 +430,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                 store.dispatch("userHandleState/updateUserType", "NORMAL");
             }
             getIfDataIsChecked(); // step 1-3
-        });
-    }
-
-    /**
-     * @description step1-2-2 获取该用户的主题
-     */
-    function getUserThemeType(userId) {
-        progressConfig.upper["1"].state.message = "正在获取主题类型......";
-        progressConfig.lower["1"].state.message = "正在获取主题类型......";
-        // 根据接口要求，必须传入count和index才会返回详细信息
-        sendRequestWithToken({
-            method: "GET",
-            url: window.linkConfig.userInfoQueryApi.replace(
-                "#param_userID#",
-                userId
-            ).replace(
-                "#user_count#",
-                1
-            ).replace(
-                "#index#",
-                0
-            ),
-        }).then((resp) => {
-            if(resp.data.data[0].webtheme==1){
-                store.dispatch("userHandleState/updateThemeType", "new");
-                const currentBaseUrl = process.env.BASE_URL;
-                const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
-                link.type = 'image/x-icon';
-                link.rel = 'icon';
-                link.href = currentBaseUrl + 'logo.ico';
-          
-                // 添加或更新<link>元素到<head>中
-                const head = document.head || document.getElementsByTagName('head')[0];
-                head.appendChild(link);
-            }else{
-                store.dispatch("userHandleState/updateThemeType", "origin");
-            }
         });
     }
     /**
@@ -570,18 +475,10 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                         progressConfig.lower["1"].state.type = "error";
                     } else {
                         matchPatientsInfo = matchPatientsInfo[0];
+
                         store.dispatch(
                             "userHandleState/updatePatientName",
                             matchPatientsInfo.name
-                        );
-                        store.dispatch(
-                            "userHandleState/updatePatientBelongUserId",
-                            matchPatientsInfo.userId
-                        )
-                        // 备注后6位是订单id，只有VIPMMM001有
-                        store.dispatch(
-                            "userHandleState/updateOrderId",
-                            matchPatientsInfo.remarks.slice(-7, -1)
                         );
                         store.dispatch(
                             "userHandleState/updateDataCheckedState",
@@ -595,20 +492,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                             {
                                 teethType: "lower",
                                 value: matchPatientsInfo.LowerUserCheck === 1,
-                            }
-                        );
-                        store.dispatch(
-                            "userHandleState/updateDataCheckableState",
-                            {
-                                teethType: "upper",
-                                value: matchPatientsInfo.UpperUserCheckable === 1,
-                            }
-                        );
-                        store.dispatch(
-                            "userHandleState/updateDataCheckableState",
-                            {
-                                teethType: "lower",
-                                value: matchPatientsInfo.LowerUserCheckable === 1,
                             }
                         );
 
@@ -667,7 +550,7 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         // 读取托槽center和zNormal
         const {
             fineTuneRecord: {
-                actorMatrix: { center, zNormal, xNormal },
+                actorMatrix: { center, zNormal },
             },
         } = bracketData[teethType].filter((item) => item.name === toothName)[0];
         // 读取牙齿polyData(切割源)
@@ -696,7 +579,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
             toothName,
             center,
             zNormal,
-            xNormal,
             renderer,
             renderWindow
         );
@@ -964,7 +846,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         toothName,
         center,
         zNormal,
-        xNormal,
         renderer,
         renderWindow
     ) {
@@ -972,20 +853,14 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         if (lineActorItem === null) {
             return;
         }
-        const pointValues = toothPolyDatas[toothName].getPoints().getData()
-        const cellValues = toothPolyDatas[toothName].getPolys().getData()
-
         updateDistanceLine(
             lineActorItem,
             toothName,
             center,
             zNormal,
-            xNormal,
             1.5,
             renderer,
-            renderWindow,
-            pointValues,
-            cellValues
+            renderWindow
         );
     }
     function findMatchDistanceLineItem(toothName) {
@@ -1107,16 +982,9 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
     function handleTeethActorDatas(teethType, actorDatas) {
         const { teethWithGingiva, tooth, bracket } = actorDatas;
         // gingiva
-        var { actor, mapper } = generateActorByData(teethWithGingiva);
+        const { actor, mapper } = generateActorByData(teethWithGingiva);
         actor.getProperty().setColor(actorColorConfig.teeth);
         allActorList[teethType].teethWithGingiva = {
-            actor,
-            mapper,
-        };
-        // originGingiva
-        var { actor, mapper } = generateActorByData(teethWithGingiva);
-        actor.getProperty().setColor(actorColorConfig.teeth);
-        allActorList[teethType].originGingiva = {
             actor,
             mapper,
         };
@@ -1128,14 +996,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
             toothPolyDatas[name] = polyData;
             actor.getProperty().setColor(actorColorConfig.teeth);
             allActorList[teethType].tooth.push({ name, actor, mapper });
-        });
-        // originTooth
-        Object.keys(tooth).forEach((name) => {
-            const { actor, mapper, polyData } = generateActorByData(
-                tooth[name]
-            );
-            actor.getProperty().setColor(actorColorConfig.teeth);
-            allActorList[teethType].originTooth.push({ name, actor, mapper });
         });
         // bracket
         Object.keys(bracket).forEach((name) => {
@@ -1154,20 +1014,9 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                 center[i] = (bounds[2 * i + 1] + bounds[2 * i]) / 2.0;
             }
             postCenter[name] = center;
+            // console.log(center)
             allActorList[teethType].bracket.push({ name, actor, mapper });
         });
-        // originBracket
-        Object.keys(bracket).forEach((name) => {
-            const { actor, mapper, polyData } = generateActorByData(
-                bracket[name]
-            );
-
-            actor.getProperty().setColor(actorColorConfig.bracket.default);
-            // 初始为normal模式,设置为[mat1,mat3], mat3是单位矩阵, 因此就是mat1
-            actor.setUserMatrix(userMatrixList.mat1[name]);
-            allActorList[teethType].originBracket.push({ name, actor, mapper });
-        });
-        
     }
     function generateActorByData({ pointValues, cellValues }) {
         const polyData = vtkPolyData.newInstance();
@@ -1283,13 +1132,56 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
             const dependingPoints = new Float32Array(
                 toothPolyDatas[name].getPoints().getData()
             );
-            const startPointRep = vtkSphereHandleRepresentation.newInstance({
-                sphereInitValue: {
-                    radius: 0.25,
-                    center: startPoint,
-                },
-                defaultColor: [0.25, 0.25, 0.8],
-                activeColor: [0.8, 0.25, 0.25],
+            // 2022.12.15更新：由于版本变动，小球widget全部重写
+            // const startPointRep = vtkSphereHandleRepresentation.newInstance({
+            //     sphereInitValue: {
+            //         radius: 0.25,
+            //         center: startPoint,
+            //     },
+            //     defaultColor: [0.25, 0.25, 0.8],
+            //     activeColor: [0.8, 0.25, 0.25],
+            //     dependingPoints,
+            //     updatePosFunc: (updatedPoint, renderer, renderWindow) =>
+            //         updateLongAxisPoint(
+            //             teethType,
+            //             name,
+            //             "start",
+            //             updatedPoint,
+            //             renderer,
+            //             renderWindow
+            //         ),
+            // });
+            // const startPointWidget = vtkHandleWidget.newInstance({
+            //     allowHandleResize: 0,
+            //     widgetRep: startPointRep,
+            // });
+
+            // const endPointRep = vtkSphereHandleRepresentation.newInstance({
+            //     sphereInitValue: {
+            //         radius: 0.25,
+            //         center: endPoint,
+            //     },
+            //     defaultColor: [0.25, 0.8, 0.25],
+            //     activeColor: [0.8, 0.25, 0.25],
+            //     dependingPoints,
+            //     updatePosFunc: (updatedPoint, renderer, renderWindow) =>
+            //         updateLongAxisPoint(
+            //             teethType,
+            //             name,
+            //             "end",
+            //             updatedPoint,
+            //             renderer,
+            //             renderWindow
+            //         ),
+            // });
+            // const endPointWidget = vtkHandleWidget.newInstance({
+            //     allowHandleResize: 0,
+            //     widgetRep: endPointRep,
+            // });
+
+            // 2022.12.15更新：使用widgetManager管理小球widget
+            // widgetManager 在viewerMain中初始化
+            const startPointWidget = vtkSphereWidget.newInstance({
                 dependingPoints,
                 updatePosFunc: (updatedPoint, renderer, renderWindow) =>
                     updateLongAxisPoint(
@@ -1300,19 +1192,10 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                         renderer,
                         renderWindow
                     ),
+                renderer: null,
+                renderWindow: null,
             });
-            const startPointWidget = vtkHandleWidget.newInstance({
-                allowHandleResize: 0,
-                widgetRep: startPointRep,
-            });
-
-            const endPointRep = vtkSphereHandleRepresentation.newInstance({
-                sphereInitValue: {
-                    radius: 0.25,
-                    center: endPoint,
-                },
-                defaultColor: [0.25, 0.8, 0.25],
-                activeColor: [0.8, 0.25, 0.25],
+            const endPointWidget = vtkSphereWidget.newInstance({
                 dependingPoints,
                 updatePosFunc: (updatedPoint, renderer, renderWindow) =>
                     updateLongAxisPoint(
@@ -1323,18 +1206,18 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                         renderer,
                         renderWindow
                     ),
+                renderer: null,
+                renderWindow: null,
             });
-            const endPointWidget = vtkHandleWidget.newInstance({
-                allowHandleResize: 0,
-                widgetRep: endPointRep,
-            });
-
             allActorList[teethType].distanceLine.push({
                 name,
                 lineActorItem,
-                startPointRep,
+                // 2022.12.15更新：由于版本变动，小球widget全部重写
+                // startPointRep,
+                startPoint,
                 startPointWidget,
-                endPointRep,
+                // endPointRep,
+                endPoint,
                 endPointWidget,
             });
             // 写入距离列表
@@ -1348,7 +1231,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         }
     }
 
-    let hasRotateFlag = false; //用来表明有无转矩信息，只有特定托槽有转矩信息
     /**
      * @description 创建2个worker子线程并开始进行数据下载和解析
      */
@@ -1416,7 +1298,7 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                             progressConfig[teethType]["5"].state[stateKey] =
                                 event.data[stateKey];
                         }
-                        const { toNext, targetBracketUID } = event.data;
+                        const { toNext } = event.data;
                         if (toNext) {
                             stlObj.teeth[teethType] = event.data.stlObj;
                             xmlObj[teethType] = event.data.xmlObj;
@@ -1477,32 +1359,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                                 step: 6,
                                 browser: browserType(),
                             });
-                        }
-                        // 从static_config.js中读取转矩配置信息
-                        hasRotateFlag = rotateConfigList[0].bracketType==targetBracketUID;
-                        rotateConfigList.forEach((configList)=>{
-                            if(hasRotateFlag){
-                                configList[teethType].forEach((tooth)=>{
-                                    rotateMessageList[tooth.name[2]-1].forEach((targetTooth)=>{
-                                        if(tooth.name==targetTooth.name){
-                                            targetTooth.rotate = tooth.rotate
-                                        }
-                                    })
-                                })
-                            }
-                        })
-                        // 从xml中读取转矩调整信息
-                        if(xmlObj[teethType]){
-                            const positionInfo = xmlObj[teethType].PositionResult[0].Position
-                            positionInfo.forEach((posInfo)=>{
-                                rotateMessageList[posInfo.$.name[2]-1].forEach((targetTooth)=>{
-                                    if(posInfo.$.name==targetTooth.name){
-                                        if(posInfo.RotatePlus){
-                                            targetTooth.plus = Number(posInfo.RotatePlus);
-                                        }
-                                    }
-                                })
-                            })
                         }
                         break;
                     }
@@ -1569,27 +1425,16 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                                     direction,
                                     position,
                                     fineTuneRecord,
-                                    fineTuneRecordRotate,
                                     initTransMatrix,
-                                    initTransMatrixRotate,
                                     bottomFaceIndexList,
                                     bracketBottomPointValues,
                                 } = event.data.bracketData[name];
                                 userMatrixList.mat1[name] = initTransMatrix; // 托槽初始变换矩阵即为mat1, 保存
-                                // 只有带有转矩信息才需要传入mat6
-                                if(hasRotateFlag){
-                                    userMatrixList.mat6[name] = initTransMatrixRotate; // 托槽初始变换矩阵即为mat1, 保存
-                                    userMatrixList.invMat6[name] = invertMatrix4x4(initTransMatrixRotate); // 托槽初始变换矩阵即为mat1, 保存    
-                                }
-                                if(!hasRotateFlag){
-                                    fineTuneRecordRotate = fineTuneRecord
-                                }
                                 bracketData[teethType].push({
                                     name,
                                     direction,
                                     position,
                                     fineTuneRecord,
-                                    fineTuneRecordRotate,
                                     bottomFaceIndexList,
                                     bracketBottomPointValues,
                                 });
@@ -1631,70 +1476,11 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                             //     }
                             // }
                             // //------------------------------------------------
+
                             handleAxisActorDatas(
                                 teethType,
                                 event.data.allActorList
                             );
-                            // worker.terminate();
-                            currentStep[teethType]++;
-                            worker.postMessage({
-                                step: 10,
-                            });
-                        }
-                        break;
-                    }
-                    case 10: {
-                        // generateTeethAxisActor
-                        for (let stateKey in progressConfig[teethType]["10"]
-                            .state) {
-                            // message, type, progress
-                            progressConfig[teethType]["10"].state[stateKey] =
-                                event.data[stateKey];
-                        }
-                        const { toNext } = event.data;
-                        if (toNext) {
-                            const { root, rootGenerate, originRoot } = event.data.allActorList
-                            root.forEach(({toothName, bottomSphereCenter, topSphereCenter, radiusSphereCenter})=>{
-                                //制造牙根底部、牙根顶部、牙根半径三个小球
-                                const rootRep = vtkRootHandleRepresentation.newInstance({
-                                    rootInitValue: {
-                                        bottomSphereCenter,
-                                        topSphereCenter,
-                                        radiusSphereCenter,
-                                    },
-                                });
-                                const rootWidget = rootHandleWidget.newInstance({
-                                    allowHandleResize: 1,
-                                    widgetRep: rootRep,
-                                });
-                                allActorList[teethType].root.push({
-                                    toothName,
-                                    rootRep,
-                                    rootWidget,
-                                })
-                            })
-                            store.dispatch(
-                                "actorHandleState/setInitRootParams",
-                                {[teethType]: root,}
-                            );
-                            
-                            if (rootGenerate.length>0){
-                                const rootList = []
-                                const originRootList = []
-                                rootGenerate.forEach(({toothName, pointValues, cellValues})=>{
-                                    const {actor, mapper} = generateActorByData({pointValues, cellValues})
-                                    actor.getProperty().setColor([1, 0.73, 0.73]);
-                                    rootList.push({ name: toothName, actor, mapper })
-                                })
-                                originRoot.forEach(({toothName, pointValues, cellValues})=>{
-                                    const {actor, mapper} = generateActorByData({pointValues, cellValues})
-                                    actor.getProperty().setColor([1, 0.73, 0.73]);
-                                    originRootList.push({ name: toothName, actor, mapper })
-                                })
-                                allActorList[teethType].rootGenerate = rootList;
-					            allActorList[teethType].originRoot = originRootList;
-                            }
-
                             worker.terminate();
                             currentStep[teethType]++;
                         }
@@ -1730,7 +1516,6 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
         bracketData,
         updateDistanceLineActor,
         distanceMessageList,
-        rotateMessageList,
         longAxisData,
     };
 }

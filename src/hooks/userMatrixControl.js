@@ -1,4 +1,4 @@
-import { invertMatrix } from "@kitware/vtk.js/Common/Core/Math";
+import { invertMatrix } from "../reDesignVtk/Math";
 import vtkPoints from "@kitware/vtk.js/Common/Core/Points";
 import vtkLandmarkTransform from "@kitware/vtk.js/Common/Transform/LandmarkTransform";
 import { bracketNameList } from "../static_config";
@@ -114,7 +114,7 @@ function invertMatrix4x4(mat) {
     return invMat4x4.flat(1);
 }
 
-export { multiplyMatrix4x4, multiplyMatrixList4x4, invertMatrix4x4, calculateTransMatrix };
+export { multiplyMatrix4x4, multiplyMatrixList4x4, invertMatrix4x4 };
 
 export default function() {
     let userMatrixList = {
@@ -127,8 +127,6 @@ export default function() {
         mat4: {}, // 排牙后的颌牙 旧位置->新位置
         invMat4: {}, // 排牙后的颌牙 新位置->旧位置
         mat5: {}, // 原始坐标系->标准坐标系, 仅用于牙齿坐标系Actor
-        mat6: {}, // 牙齿和托槽 转矩变换前位置->转矩变换后位置
-        invMat6: {}, // 牙齿和托槽 转矩变换后位置->转矩变换前位置
     }; // 转换矩阵列表, 用于映射[模拟排牙]前后的actor相对位置
     let applyCalMatrix = {
         // 托槽
@@ -201,7 +199,7 @@ export default function() {
         Object.keys(userMatrixList).forEach((matType) => {
             // [identity,mat1,mat2,invMat2,mat3,invMat3,mat4,invMat4,mat5]
             if (
-                ["mat1", "mat2", "invMat2", "mat3", "invMat3", "mat6", "invMat6"].includes(matType)
+                ["mat1", "mat2", "invMat2", "mat3", "invMat3"].includes(matType)
             ) {
                 for (let name of bracketNameList) {
                     if (!userMatrixList[matType][name]) {
@@ -291,18 +289,18 @@ export default function() {
      * ------------------------------------------------------------------
      *       |                  [toothFix]                                    |
      *      |                     |       下颌牙         |    上颌牙            |
-     *     |                 托槽 | mat1,mat3,mat6,mat2,mat4 | mat1,mat3,mat6,mat2,mat4 |
-     *    |牙齿/坐标轴/距离/距离文字 | mat2,mat6,mat4           | mat2,mat6,mat4           |
-     *   |             轴点反映射 | invMat4,invMat6,invMat2     | invMat4,invMat6,invMat2     |
-     *  |               依赖点集 | mat2,mat4,mat6           | mat2,mat4,mat6          |
+     *     |                 托槽 | mat1,mat3,mat2,mat4 | mat1,mat3,mat2,mat4 |
+     *    |牙齿/坐标轴/距离/距离文字 | mat2,mat4           | mat2,mat4           |
+     *   |             轴点反映射 | invMat4,invMat2     | invMat4,invMat2     |
+     *  |               依赖点集 | mat2,mat4           | mat2,mat4           |
      * |                 牙弓线 | mat4                | mat4                |
      * ------------------------------------------------------------------
      *        |                  [bracketFix]                                   |
      *      |                     | 下颌牙                | 上颌牙                |
-     *     |                 托槽 | mat1,mat6,mat2,mat4       | mat1,mat6,mat2,mat4       |
-     *    |牙齿/坐标轴/距离/距离文字 | invMat3,mat6,mat2,mat4    | invMat3,mat6,mat2,mat4    |
-     *   |             轴点反映射 | invMat4,invMat2,invMat6,mat3 | invMat4,invMat2,invMat6,mat3 |
-     *  |               依赖点集 | invMat3,mat6,mat2,mat4    | invMat3,mat6,mat2,mat4    |
+     *     |                 托槽 | mat1,mat2,mat4       | mat1,mat2,mat4       |
+     *    |牙齿/坐标轴/距离/距离文字 | invMat3,mat2,mat4    | invMat3,mat2,mat4    |
+     *   |             轴点反映射 | invMat4,invMat2,mat3 | invMat4,invMat2,mat3 |
+     *  |               依赖点集 | invMat3,mat2,mat4    | invMat3,mat2,mat4    |
      * |                 牙弓线 | mat4                 | mat4                 |
      * --------------------------------------------------------------
      * 各mat(matrix)变换矩阵能够执行的变换含义:
@@ -359,27 +357,29 @@ export default function() {
                     applyMatrixType[teethType].bracket = [
                         "mat1",
                         "mat3",
-                        "mat6",
                         "mat2",
                         "mat4",
                     ];
                     // 牙齿/坐标轴/距离线/距离文字
-                    applyMatrixType[teethType].tad = ["mat6", "mat2", "mat4"];
+                    applyMatrixType[teethType].tad = ["mat2", "mat4"];
                     // 轴点反映射(现牙齿->原牙齿)
                     // 从当前变换后牙齿点集[mat2, mat4]反映射回normal状态下未经变换的牙齿点集[identity]
                     // 解析: 逆变换[invMat4, invMat2], 是tad的逆矩阵
-                    applyMatrixType[teethType].sphereReversrProj = ["invMat4", "invMat2", "invMat6"]
+                    applyMatrixType[teethType].sphereReversrProj = [
+                        "invMat4",
+                        "invMat2",
+                    ];
                     // 轴点依赖点集转换
                     applyMatrixType[teethType].dependingTrans =
                         fromMode === "normal"
                             ? // normal->simToothFix
                               // [identity]->[mat2,mat4]
                               // 解析: 变换[mat2, mat4]
-                              ["mat6", "mat2", "mat4"]
+                              ["mat2", "mat4"]
                             : // simBracketFix->simToothFix
                               // [invMat3,mat2,mat4]->[mat2,mat4]
                               // 解析: 逆变换[invMat4, invMat2, mat3]->变换[mat2, mat4]
-                              ["invMat4","invMat2", "invMat6", "mat3", "mat6","mat2", "mat4"];
+                              ["invMat4", "invMat2", "mat3", "mat2", "mat4"];
                     // 牙弓线
                     applyMatrixType[teethType].arch = ["mat4"];
                 }
@@ -391,14 +391,12 @@ export default function() {
                     // 托槽
                     applyMatrixType[teethType].bracket = [
                         "mat1",
-                        "mat6",
                         "mat2",
                         "mat4",
                     ];
                     // 牙齿/坐标轴/距离线/距离文字
                     applyMatrixType[teethType].tad = [
                         "invMat3",
-                        "mat6",
                         "mat2",
                         "mat4",
                     ];
@@ -406,7 +404,6 @@ export default function() {
                     applyMatrixType[teethType].sphereReversrProj = [
                         "invMat4",
                         "invMat2",
-                        "invMat6",
                         "mat3",
                     ];
                     // 轴点依赖点集转换
@@ -415,11 +412,11 @@ export default function() {
                             ? // normal->simBracketFix
                               // [identity]->[invMat3,mat2,mat4]
                               // 解析: 变换[invMat3, mat2, mat4]
-                              ["invMat3","mat6", "mat2", "mat4"]
+                              ["invMat3", "mat2", "mat4"]
                             : // simToothFix->simBracketFix
                               // [mat2,mat4]->[invMat3,mat2,mat4]
                               // 解析: 逆变换[invMat4, invMat2]->变换[invMat3, mat2, mat4]
-                              ["invMat4", "invMat2","invMat6", "invMat3","mat6", "mat2", "mat4"];
+                              ["invMat4", "invMat2", "invMat3", "mat2", "mat4"];
                     // 牙弓线
                     applyMatrixType[teethType].arch = ["mat4"];
                 }
@@ -529,27 +526,21 @@ export default function() {
         bracketTeethType,
         preBracketPosition,
         newFineTuneRecord,
-        currMode,
-        isRotate=false,
+        currMode
     ) {
         // 旧位置(上次排牙前一刻位置/数据读入位置)->新位置
-        const mat = calculateTransMatrix(
+        const mat3 = calculateTransMatrix(
             preBracketPosition,
             newFineTuneRecord
         );
         // 新位置->旧位置(上次排牙前一刻位置/数据读入位置)
-        const invMat = calculateTransMatrix(
+        const invMat3 = calculateTransMatrix(
             newFineTuneRecord,
             preBracketPosition
         );
         // 更新mat3和invMat3
-        if(!isRotate){
-            userMatrixList.mat3[bracketName] = mat;
-            userMatrixList.invMat3[bracketName] = invMat;    
-        }else{
-            userMatrixList.mat6[bracketName] = mat;
-            userMatrixList.invMat6[bracketName] = invMat;   
-        }
+        userMatrixList.mat3[bracketName] = mat3;
+        userMatrixList.invMat3[bracketName] = invMat3;
         // ---更新数据(针对对应牙齿相关actor)---
         const needToUpdate = {};
         switch (currMode) {
@@ -568,25 +559,25 @@ export default function() {
             case "simToothFix": {
                 // 模拟排牙-牙齿固定
                 // 托槽
-                needToUpdate.bracket = ["mat1", "mat3","mat6", "mat2", "mat4"];
+                needToUpdate.bracket = ["mat1", "mat3", "mat2", "mat4"];
                 // 牙齿/坐标轴/距离线/距离文字
-                needToUpdate.tad = ["mat6", "mat2", "mat4"];
+                needToUpdate.tad = false;
                 // 轴点反映射(现牙齿->原牙齿)
-                needToUpdate.sphereReversrProj = ["invMat4", "invMat2", "invMat6"];
+                needToUpdate.sphereReversrProj = false;
                 // 轴点依赖点集转换
-                needToUpdate.dependingTrans = ["mat6", "mat2", "mat4"];     
+                needToUpdate.dependingTrans = false;
                 break;
             }
             case "simBracketFix": {
                 // 模拟排牙-托槽固定
                 // 托槽
-                needToUpdate.bracket = ["mat1", "mat6", "mat2", "mat4"];
+                needToUpdate.bracket = false;
                 // 牙齿/坐标轴/距离线/距离文字
-                needToUpdate.tad = ["invMat3", "mat6", "mat2", "mat4"];
+                needToUpdate.tad = ["invMat3", "mat2", "mat4"];
                 // 轴点反映射(现牙齿->原牙齿)
-                needToUpdate.sphereReversrProj = ["invMat4", "invMat2", "invMat6", "mat3"];
+                needToUpdate.sphereReversrProj = ["invMat4", "invMat2", "mat3"];
                 // 轴点依赖点集转换
-                needToUpdate.dependingTrans = ["invMat3", "mat6", "mat2", "mat4"];
+                needToUpdate.dependingTrans = ["invMat3", "mat2", "mat4"];
                 break;
             }
         }
@@ -696,11 +687,11 @@ export default function() {
             case "simToothFix": {
                 // 模拟排牙-牙齿固定
                 // 托槽
-                applyMatrixType.bracket = ["mat1", "mat3","mat6", "mat2", "mat4"];
+                applyMatrixType.bracket = ["mat1", "mat3", "mat2", "mat4"];
                 // 牙齿/坐标轴/距离线/距离文字
-                applyMatrixType.tad = ["mat6", "mat2", "mat4"];
+                applyMatrixType.tad = ["mat2", "mat4"];
                 // 轴点反映射(现牙齿->原牙齿)
-                applyMatrixType.sphereReversrProj = ["invMat4", "invMat2", "invMat6"];
+                applyMatrixType.sphereReversrProj = ["invMat4", "invMat2"];
                 // 牙弓线
                 applyMatrixType.arch = ["mat4"];
                 // 牙齿坐标系
@@ -710,11 +701,15 @@ export default function() {
             case "simBracketFix": {
                 // 模拟排牙-托槽固定
                 // 托槽
-                applyMatrixType.bracket = ["mat1", "mat6", "mat2", "mat4"];
+                applyMatrixType.bracket = ["mat1", "mat2", "mat4"];
                 // 牙齿/坐标轴/距离线/距离文字
-                applyMatrixType.tad = ["invMat3", "mat6", "mat2", "mat4"];
+                applyMatrixType.tad = ["invMat3", "mat2", "mat4"];
                 // 轴点反映射(现牙齿->原牙齿), 是tad的逆矩阵
-                applyMatrixType.sphereReversrProj = ["invMat4", "invMat2", "invMat6", "mat3"];
+                applyMatrixType.sphereReversrProj = [
+                    "invMat4",
+                    "invMat2",
+                    "mat3",
+                ];
                 // 牙弓线
                 applyMatrixType.arch = ["mat4"];
                 // 牙齿坐标系

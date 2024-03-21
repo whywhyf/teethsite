@@ -1,13 +1,10 @@
 // state本身是proxy, 其中的对象取出来也是proxy, 但取出其中的基本数据类型就是直接的值而不是proxy
 // 在外部需要监视某个基本数据类型, 则需要套一层computed;
-
-import { toRaw } from "vue";
-
 // 如果本来就是对象, 则不用再套一层computed去监视, 这样反而监视不到变化!
 export default {
     namespaced: true,
     actions: {
-        // 有异步操作在action中进行
+        // 有异步操作咋action中进行
         updateSimMode(context, value) {
             context.commit("UpdateSimMode", value);
         },
@@ -64,30 +61,6 @@ export default {
         },
         updateDentalArchLockState(context, value) {
             context.commit("UpdateDentalArchLockState", value);
-        },
-        updateIsArchUpdated(context, value){
-            context.commit("UpdateIsArchUpdated", value);
-        },
-        setToothOpacity(context, value){
-            context.commit("SetToothOpacity", value);
-        },
-        setArchScale(context, value){
-            context.commit("SetArchScale", value);
-        },
-        setSelectedPreset(context, value){
-            context.commit("SetSelectedPreset", value);
-        },
-        setClickUsePreset(context, value){
-            context.commit("SetClickUsePreset", value);
-        },
-        updateGenerateRootRecord(context, value) {
-            context.commit("UpdateGenerateRootRecord", value);
-        },
-        setInitRootParams(context, value){
-            context.commit("SetInitRootParams", value);
-        },
-        setInitRootFlag(context, value) {
-            context.commit("SetInitRootFlag", value);
         },
     },
     mutations: {
@@ -185,13 +158,11 @@ export default {
                                 state.teethArrange.dentalArchAdjustRecord[
                                     teethType
                                 ].isArrangeUpdated = false;
-                                console.log(0)
                             }
                             if (recordProps === "arrangeMatrix") {
                                 state.teethArrange.dentalArchAdjustRecord[
                                     teethType
                                 ].isArrangeUpdated = true;
-                                console.log(1)
                             }
                         }
                     }
@@ -207,7 +178,6 @@ export default {
                                 arrangeMatrix: {},
                             }
                         );
-                        console.log(1)
                     }
                     if (value[teethType].reArrangeToInitState === true) {
                         Object.assign(
@@ -222,7 +192,6 @@ export default {
                                 resetCenters: {},
                             }
                         );
-                        console.log(1)
                     }
                 }
             }
@@ -266,7 +235,6 @@ export default {
                         arrangeMatrix: {},
                     }
                 );
-                console.log(1)
             }
 
             // 然后设置overwriteByDentalArchAdjustRecord为true, 引起外部监听事件
@@ -290,36 +258,8 @@ export default {
         UpdateDentalArchLockState(state, value) {
             state.teethArrange.lockDentalArch = value;
         },
-        UpdateIsArchUpdated(state, value){
-            state.isArchUpdated = value;
-        },
-        SetToothOpacity(state, value){
-            state.toothOpacity = value;
-        },
-        SetArchScale(state, value){
-            state.archScale = value;
-        },
-        SetSelectedPreset(state, value){
-            state.selectedPreset = value;
-        },
-        SetClickUsePreset(state, value){
-            state.clickUsePreset = value;
-        },
-        UpdateGenerateRootRecord(state, value){
-            Object.assign(state.generateRootRecord,value)
-        },
-        SetInitRootParams(state, value){
-            Object.assign(state.initRootParams,value)
-        },
-        SetInitRootFlag(state, value){
-            Object.assign(state.initRootFlag,value)
-        },
     },
     state: {
-        toothOpacity: 50,
-        archScale: 1,
-        selectedPreset: -1,
-        clickUsePreset: false,
         simMode: "simBracketFix", //"simToothFix",
         currentSelectBracketName: "",
 
@@ -331,8 +271,8 @@ export default {
         currentShowPanel: -1, // 当前显示菜单, -1为工具菜单
         teethPositionAdjust: {
             teethType: "upper",
-            step: 0.1,
-            angle: 1.0,
+            step: 0.2,
+            angle: 3.0,
         },
         // 外部监听,调用对应事件， 牙齿位置更新, 更新完毕重置为""
         // 如果不为""则不更新为其它值
@@ -392,7 +332,6 @@ export default {
                 reCalculateArch: false,
                 overwriteByDentalArchAdjustRecord: false,
                 regenerate: false,
-                clickFlag: false,
                 upper: {
                     reArrangeToInitState: false, // 点击[初始化]后设置为true, 用于触发viewerMain中的更新
                     isReinitActivate: false, // 是否能[初始化], 只有点了一次[保存]覆盖外部牙弓线以后才会设置为true
@@ -426,20 +365,6 @@ export default {
         teethActors: {
             standardAxisActor: { actor: null, mapper: null }, // 根据标准坐标系计算, 仅需计算一次
         },
-        clickEnter: false,
-        isArchUpdated: false,
-        generateRootRecord: {
-            upper: false,
-            lower: false,
-        },
-        initRootParams: {
-            upper: [],
-            lower: [],
-        }, // 用于保存重置牙根圆锥方向的参数
-        initRootFlag: {
-            upper: false,
-            lower: false,
-        }, // 用于触发圆锥方向的重置
     },
     getters: {
         fineTuneMode(state) {
@@ -520,7 +445,6 @@ export default {
                 } = state.teethArrange.dentalArchAdjustRecord[teethType];
                 if (coEfficients !== null) {
                     // 任一为true(调整过), 即可保存
-
                     isAdjusted = true;
                 }
                 if (!isArrangeUpdated) {

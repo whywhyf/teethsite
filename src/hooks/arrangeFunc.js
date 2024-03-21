@@ -648,16 +648,7 @@ function transformSingleToothData(
  * @param originalAxis 原始坐标系
  * @param targetAxis 目标坐标系
  */
-function calculateRigidBodyTransMatrix(originalAxis, targetAxis, originCenter=[0,0,0]) {
-    originalAxis[0] = originalAxis[0]+originCenter[0]
-    originalAxis[1] = originalAxis[1]+originCenter[1]
-    originalAxis[2] = originalAxis[2]+originCenter[2]
-    originalAxis[3] = originalAxis[3]+originCenter[0]
-    originalAxis[4] = originalAxis[4]+originCenter[1]
-    originalAxis[5] = originalAxis[5]+originCenter[2]
-    originalAxis[6] = originalAxis[6]+originCenter[0]
-    originalAxis[7] = originalAxis[7]+originCenter[1]
-    originalAxis[8] = originalAxis[8]+originCenter[2]
+function calculateRigidBodyTransMatrix(originalAxis, targetAxis) {
     let originPoints = vtkPoints.newInstance(); // 原始点集
     originPoints.setData(originalAxis);
     let targetPoints = vtkPoints.newInstance(); // 目标点集
