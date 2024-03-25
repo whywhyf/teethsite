@@ -338,7 +338,7 @@ export default function(allActorList) {
      * arch- 0-托槽+牙弓线 1-牙弓线 2-托槽 3-none
      */
     function actorShowStateUpdateFusion(state, isInSimulationMode) {
-        let { upper, lower, teethWithGingiva, axis, arch } = state;
+        let { upper, lower, teethWithGingiva, axis, arch, segMode } = state;
 
         let curActorInScene = {
             upper: {
@@ -358,7 +358,15 @@ export default function(allActorList) {
                 arch: lower && arch <= 1, // 牙弓线
             },
         };
-
+        // todo seg时把目前所有actor清除
+        if (segMode){
+            for (let teethType of ["upper", "lower"]) {
+                for (let key in curActorInScene[teethType]){
+                    curActorInScene[teethType][key] = false
+                }
+            }
+        };
+        
         const addActorsList = []; // 根据状态对比(false->true),生成应该加入屏幕的actor列表
         const delActorsList = []; // 根据状态对比(true->false),生成应该移出屏幕的actor列表
 
@@ -466,6 +474,19 @@ export default function(allActorList) {
                     delActorsList.push(allActorList[teethType].arch.actor);
                 }
             }
+        }
+
+        // todo 如果是segmode 清空list并加入seg actor
+        console.log('segmode actorlist',allActorList.fullToothPolyData)
+        if (segMode) {
+            addActorsList.length = 0;
+            if (upper) { addActorsList.push(allActorList.fullToothPolyData.upper.actor) }
+            else { delActorsList.push(allActorList.fullToothPolyData.upper.actor)}
+            if (lower && allActorList.fullToothPolyData) { addActorsList.push(allActorList.fullToothPolyData.lower.actor) }
+            else { delActorsList.push(allActorList.fullToothPolyData.lower.actor)}
+        }else{
+            delActorsList.push(allActorList.fullToothPolyData.upper.actor)
+            delActorsList.push(allActorList.fullToothPolyData.lower.actor)
         }
 
         // 更新pre状态为cur状态

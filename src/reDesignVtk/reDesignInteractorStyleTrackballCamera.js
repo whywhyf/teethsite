@@ -17,20 +17,20 @@ function vtkInteractorStyleTrackballCameraNew(publicAPI, model) {
     model.classHierarchy.push("vtkInteractorStyleTrackballCameraNew");
 
     // 鼠标右键：拖动
-    publicAPI.handleRightButtonPress = (callData) => {
-        if (!callData.shiftKey && !callData.controlKey && !callData.altKey) {
-            // 鼠标右键 -> pan
-            publicAPI.startPan();
-        }
-    };
-    //--------------------------------------------------------------------------
-    publicAPI.handleRightButtonRelease = () => {
-        switch (model.state) {
-            case States.IS_PAN:
-                publicAPI.endPan();
-                break;
-        }
-    };
+    // publicAPI.handleRightButtonPress = (callData) => {
+    //     if (!callData.shiftKey && !callData.controlKey && !callData.altKey) {
+    //         // 鼠标右键 -> pan
+    //         publicAPI.startPan();
+    //     }
+    // };
+    // //--------------------------------------------------------------------------
+    // publicAPI.handleRightButtonRelease = () => {
+    //     switch (model.state) {
+    //         case States.IS_PAN:
+    //             publicAPI.endPan();
+    //             break;
+    //     }
+    // };
 }
 
 // ----------------------------------------------------------------------------

@@ -266,6 +266,7 @@ export default {
         currentMode: {
             fineTune: false,
             straightenSimulation: false, // 模拟矫正
+            segmentation: false, // 牙齿分割
         },
         // 牙齿位置调整设置
         currentShowPanel: -1, // 当前显示菜单, -1为工具菜单

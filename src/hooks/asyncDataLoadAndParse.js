@@ -71,6 +71,8 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
             OBB: {}, // 整个下颌牙的OBB包围盒，碰撞检测时使用，不显示
             collisionTeeth: [], // 碰撞检测时，每个碰撞牙齿碰撞部分的actor
         },
+        fullToothData:{},
+        fullToothPolyData:{},
         picture: null,
         intersection: null
     }; // 全部actor
@@ -1439,6 +1441,12 @@ export default function(vtkTextContainer, userMatrixList, applyCalMatrix) {
                                     bracketBottomPointValues,
                                 });
                             }
+
+                            // DONE 根据子线程返回的全坐标构建polydata并返回给viewermain
+                            console.log('全牙数据',event.data.allActorList.fullToothData, teethType);
+                            allActorList.fullToothData[teethType] = event.data.allActorList.fullToothData
+                            console.log('allActorList', allActorList)
+                            allActorList.fullToothPolyData[teethType] = generateActorByData(event.data.allActorList.fullToothData);
 
                             handleTeethActorDatas(
                                 teethType,

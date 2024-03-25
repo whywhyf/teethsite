@@ -29,6 +29,11 @@
 					:isShow="!arrangeShowState.isShow && currentShowPanel === 1"
 					:exitToolPanel="exitToolPanel"
 				/>
+				<!-- 牙齿分割功能 -->
+				<TeethSeg v-if="isManager"
+					:isShow="!arrangeShowState.isShow && currentShowPanel === 2"
+					:exitToolPanel="exitToolPanel"
+				/>
 				<div class="main-block progress" :class="{ show: arrangeShowState.isShow }">
 					<div class="arrange-progress-bar">
 						<el-dual-progress
@@ -85,6 +90,7 @@ import ElDualProgress from "../progress";
 import TeethPosAdjust from "./TeethPosAdjust.vue";
 import ToolMenu from "./ToolMenu.vue";
 import DeltalArchAdjust from "./DeltalArchAdjust.vue";
+import TeethSeg from "./TeethSeg.vue";
 
 const store = useStore();
 const isManager = computed(() => 
@@ -127,6 +133,17 @@ const toolMenuList = computed(() => {
 				{
 					intro: "牙齿数据至少能拟合出一条牙弓线",
 					isFit: arrangeTeethType.value.length > 0,
+				},
+			],
+		},
+		{
+			toolName: "牙齿分割",
+			toolIntro: "自动分割牙齿，并提供人工微调功能",
+			activate: true,
+			toolLimits: [
+				{
+					intro: "需要在普通模式下使用",
+					isFit: true,
 				},
 			],
 		},

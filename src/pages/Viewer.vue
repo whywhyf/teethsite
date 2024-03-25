@@ -357,6 +357,7 @@ import { ref, reactive, watch, computed, getCurrentInstance, onMounted, toRaw } 
 import { useStore } from "vuex";
 import TopPanel from "../components/TopPanel";
 import ViewerMain from "../components/ViewerComponent/ViewerMain";
+import ViewerSeg from "../components/ViewerComponent/ViewerSeg";
 import Loading from "../components/ViewerComponent/Loading";
 import { throttle } from "@kitware/vtk.js/macro";
 import Dialog from "../components/Dialog/index";
@@ -495,8 +496,9 @@ let actorInScene = reactive({
 	teethWithGingiva: 1, // 牙齿+牙龈0/牙齿1
 	axis: false, // 坐标轴显示/隐藏
 	arch: 2, // 牙弓线显示01/隐藏23, 托槽显示02/隐藏13
+	segMode: false,//分割模式
 });
-
+// todo 把segmode放在store里 
 const currentSelectBracketName = computed(() => store.state.actorHandleState.currentSelectBracketName);
 
 const isArrangeConditionSatisfy = computed(() => store.getters["userHandleState/isArrangeConditionSatisfy"]);

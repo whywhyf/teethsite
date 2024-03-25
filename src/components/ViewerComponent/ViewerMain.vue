@@ -99,6 +99,10 @@ import { random } from "../../reDesignVtk/Math";
 import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource';
 import vtkPolygon from "@kitware/vtk.js/Common/DataModel/Polygon"
 import vtkFPSMonitor from '@kitware/vtk.js/Interaction/UI/FPSMonitor';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
+import vtkCalculator from '@kitware/vtk.js/Filters/General/Calculator';
+import { FieldDataTypes } from '@kitware/vtk.js/Common/DataModel/DataSet/Constants';
+import { AttributeTypes } from '@kitware/vtk.js/Common/DataModel/DataSetAttributes/Constants';
 
 const props = defineProps({
 	changeLoadingMessage: {
@@ -114,6 +118,7 @@ const props = defineProps({
 			teethWithGingiva: 2, // 牙齿+牙龈0/牙齿1/牙龈2
 			axis: false, // 坐标轴显示/隐藏
 			arch: 2, // 牙弓线显示01/隐藏23, 托槽显示02/隐藏13
+			segMode:false
 		}),
 	},
 	selectedWidget: String,
@@ -199,6 +204,30 @@ watch(currentShowPanel, (newVal, oldVal) => {
 			upper: { reset: true },
 			lower: { reset: true },
 		});
+		// 开启微调托槽
+		store.dispatch("actorHandleState/updateCurrentMode", {
+			fineTune: true,
+		});
+	}
+	// 从[工具菜单]进入[牙齿分割]
+	if (oldVal === -1 && newVal === 2) {
+		props.actorInScene.segMode = true
+		props.actorInScene.upper = true; // 全上颌牙显示/隐藏
+		props.actorInScene.lower = true; 
+		// props.actorInScene.teethWithGingiva = 2; // 牙齿+牙龈0/牙齿1/牙龈2
+		// props.actorInScene.axis = false; // 坐标轴显示/隐藏
+		// 关闭托槽微调
+		store.dispatch("actorHandleState/updateCurrentMode", {
+			fineTune: false,
+		});
+	}
+	// 从[牙弓线调整]退出到[工具菜单]
+	if (oldVal === 2 && newVal === -1) {
+		props.actorInScene.segMode = false
+		props.actorInScene.upper = true; // 全上颌牙显示/隐藏
+		props.actorInScene.lower = true; 
+		// props.actorInScene.teethWithGingiva = 0; // 牙齿+牙龈0/牙齿1/牙龈2
+		// props.actorInScene.axis = true; // 坐标轴显示/隐藏
 		// 开启微调托槽
 		store.dispatch("actorHandleState/updateCurrentMode", {
 			fineTune: true,
@@ -1233,12 +1262,323 @@ function moveHandle(selectedWidget, moveType, moveStep, ifStraightenSimulation){
 		})
 	}
 }
+// ------------------------------------------------------------------------------------------------
+// NOTE 为该polydata初始化colorarray
+// ------------------------------------------------------------------------------------------------
+function initColorArray(polyData, r, g, b) {
+	const size = polyData.getPoints().getData().length;
+	const rgbArray = new Uint8Array(size);
+	let offset = 0;
 
+	while (offset < size) {
+		rgbArray[offset++] = r;
+		rgbArray[offset++] = g;
+		rgbArray[offset++] = b;
+	}
+
+	polyData.getPointData().setScalars(
+		vtkDataArray.newInstance({
+			name: 'color',
+			numberOfComponents: 3,
+			values: rgbArray,
+		})
+	);
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// 模型的牙齿标签
+// ------------------------------------------------------------------------------------------------
+let upperLabelTeeth = null;
+let lowerLabelTeeth = null;
+
+// ------------------------------------------------------------------------------------------------
+// 模型的普通上色filter 
+// ------------------------------------------------------------------------------------------------
+// TODO 切换颜色 不用更多filter
+const upperFilterNormal = vtkCalculator.newInstance()
+const lowerFilterNormal = vtkCalculator.newInstance()
+function initFilter(upperLabelTeeth, lowerLabelTeeth){
+	upperFilterNormal.setFormula({
+		getArrays: (inputDataSets) => ({
+			input: [{ location: FieldDataTypes.COORDINATE }], // Require point coordinates as input
+			output: [
+
+				{
+					location: FieldDataTypes.POINT, // This array will be field data ...
+					name: 'color', // ... with the given name ...
+					dataType: 'Uint8Array', // ... of this type ...
+					attribute: AttributeTypes.SCALARS, // ... and will be marked as the default scalars.
+					numberOfComponents: 3, // ... with this many components ...
+				},
+			],
+		}),
+		evaluate: (arraysIn, arraysOut) => {
+			// Convert in the input arrays of vtkDataArrays into variables
+			// referencing the underlying JavaScript typed-data arrays:
+			const [coords] = arraysIn.map((d) => d.getData());
+			const [temp] = arraysOut.map((d) => d.getData());
+
+			// Since we are passed coords as a 3-component array,
+			// loop over all the points and compute the point-data output:
+
+			for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
+				if (upperLabelTeeth != null) {
+					if (upperLabelTeeth['labels'][i] == 0) {
+						// 肉色241, 169, 153
+						temp[i * 3] = 241
+						temp[i * 3 + 1] = 169
+						temp[i * 3 + 2] = 153
+					} else {
+						// 白色255，255，255
+						// 252, 248, 239
+
+						temp[i * 3] = 252
+						temp[i * 3 + 1] = 248
+						temp[i * 3 + 2] = 239
+
+						// let colorId = upperLabelTeeth['labels'][i] % colorbar.length
+						// temp[i * 3] = colorbar[colorId][0]
+						// temp[i * 3 + 1] = colorbar[colorId][1]
+						// temp[i * 3 + 2] = colorbar[colorId][2]
+
+					}
+				} else {
+					temp[i * 3] = 255
+					temp[i * 3 + 1] = 0
+					temp[i * 3 + 2] = 255
+				}
+			}
+			// Mark the output vtkDataArray as modified
+			arraysOut.forEach((x) => x.modified());
+		},
+	});
+
+	lowerFilterNormal.setFormula({
+		getArrays: (inputDataSets) => ({
+			input: [{ location: FieldDataTypes.COORDINATE }], // Require point coordinates as input
+			output: [
+
+				{
+					location: FieldDataTypes.POINT, // This array will be field data ...
+					name: 'color', // ... with the given name ...
+					dataType: 'Uint8Array', // ... of this type ...
+					attribute: AttributeTypes.SCALARS, // ... and will be marked as the default scalars.
+					numberOfComponents: 3, // ... with this many components ...
+				},
+			],
+		}),
+		evaluate: (arraysIn, arraysOut) => {
+			// Convert in the input arrays of vtkDataArrays into variables
+			// referencing the underlying JavaScript typed-data arrays:
+			const [coords] = arraysIn.map((d) => d.getData());
+			const [temp] = arraysOut.map((d) => d.getData());
+
+			// Since we are passed coords as a 3-component array,
+			// loop over all the points and compute the point-data output:
+
+			for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
+				if (lowerLabelTeeth != null) {
+					if (lowerLabelTeeth['labels'][i] == 0) {
+						// 肉色241, 169, 153
+						temp[i * 3] = 241
+						temp[i * 3 + 1] = 169
+						temp[i * 3 + 2] = 153
+					} else {
+						// 白色255，255，255
+						// 252, 248, 239
+						
+						temp[i * 3] = 252
+						temp[i * 3 + 1] = 248
+						temp[i * 3 + 2] = 239
+						// let colorId = lowerLabelTeeth['labels'][i] % colorbar.length
+						// temp[i * 3] = colorbar[colorId][0]
+						// temp[i * 3 + 1] = colorbar[colorId][1]
+						// temp[i * 3 + 2] = colorbar[colorId][2]
+					}
+				} else {
+					temp[i * 3] = 0
+					temp[i * 3 + 1] = 255
+					temp[i * 3 + 2] = 255
+				}
+			}
+			// Mark the output vtkDataArray as modified
+			arraysOut.forEach((x) => x.modified());
+		},
+	});
+}
+
+
+
+// ------------------------------------------------------------------------------------------------
+// 开启鼠标事件侦听
+// ------------------------------------------------------------------------------------------------
+function turnOnSegMouse() {
+	console.log("Turn on seg mouse")
+	const { renderer, interactor, hardwareSelector } = vtkContext;
+	interactor.onMouseMove((callData) => {
+		// console.log(props.actorInScene.segMode)
+		if(props.actorInScene.segMode == false){return}
+		pickOnSegMouseEvent(callData)
+	})
+	// vtkContainer.value.addEventListener("mousemove", throttleSegMouseHandler);
+}
+// todo 推出模式后停止拾取
+
+// ------------------------------------------------------------------------------------------------
+// 在鼠标事件上进行拾取的函数  eventToWindowXY直接用已定义好的
+// ------------------------------------------------------------------------------------------------
+const throttleSegMouseHandler = throttle(pickOnSegMouseEvent, 20);
+async function pickOnSegMouseEvent(callData) {
+	console.log('picking')
+	const { renderer, interactor, hardwareSelector } = vtkContext;
+	if (interactor.isAnimating()) {
+		// 在场景交互期间阻止拾取  
+		return;
+	}
+	const [x, y] = eventToWindowXY(event);
+
+	// 隐藏指针角色并启动基于硬件的拾取  
+	// pointerActor.setVisibility(false);
+	hardwareSelector.setFieldAssociation(FieldAssociations.FIELD_ASSOCIATION_CELLS);
+	hardwareSelector.getSourceDataAsync(renderer, x, y, x, y).then((result) => {
+		if (result) {
+			processSegSelections(result.generateSelection(x, y, x, y));
+		} else {
+			processSegSelections(null);
+		}
+	});
+}
+
+
+
+// ------------------------------------------------------------------------------------------------
+// 处理选择的模型
+// ------------------------------------------------------------------------------------------------
+async function processSegSelections(selections) {
+	if (!selections || selections.length === 0) {
+		console.log('no selection')
+		return
+	}
+
+	const {
+		worldPosition: rayHitWorldPosition,
+		compositeID,
+		prop,
+		propID,
+		attributeID,
+	} = selections[0].getProperties();
+	global.selections = selections;
+	// console.log('selected', compositeID)
+	// console.log('selected', prop)
+	console.log('selected prop id', propID)
+	console.log('selected cell id', attributeID)
+
+	// todo 若右键按下，控制渲染
+
+	drawCell(attributeID, prop, propID)
+	
+
+}
+
+async function drawCell(attributeID, prop, propID){
+	
+	if (segContext.isRightMousePressed){
+		console.log('draw', propID)
+		if (attributeID || attributeID === 0) {
+			const input = prop.getMapper().getInputData();
+			if (!input.getCells()) {
+      			input.buildCells();
+    		}
+			
+			let teethType = null
+			if (propID == 2){
+				teethType = 'upper'
+			}else if(propID == 3){
+				teethType = 'lower'
+			}
+			const cellPoints = input.getCellPoints(attributeID);
+			if (cellPoints) {
+				const pointIds = cellPoints.cellPointIds;
+				for (let pointId of pointIds) {
+					// 更新
+					segContext[teethType].label['labels'][pointId] = 1;
+				}
+				
+			}
+		}
+	}
+}
+let segContext = null;
 const widgetManager = vtkWidgetManager.newInstance();
 // 用于监听显示/隐藏状态改变
 watch(props.actorInScene, (newVal) => {
 	const { addActorsList, delActorsList } = actorShowStateUpdateFusion(newVal, fineTuneMode.value !== "normal");
 	actorInSceneAdjust(addActorsList, delActorsList);
+	// NOTE 初始化segcontext
+	if (segContext == null && props.actorInScene.segMode) {
+		console.log("init segContext")
+		const upperPolyData = allActorList.fullToothPolyData.upper.polyData;
+		const lowerPolyData = allActorList.fullToothPolyData.lower.polyData;
+		upperPolyData.buildCells()
+		lowerPolyData.buildCells()
+
+		initColorArray(upperPolyData, 255, 255, 255)
+		initColorArray(lowerPolyData, 255, 255, 255)
+		const upperColor = upperPolyData.getPointData().getScalars().getData()
+		const lowerColor = lowerPolyData.getPointData().getScalars().getData()
+
+		const upperLabelTeeth = {
+			type: 'upper',
+			labels: new Array(upperColor.length/3).fill(0)
+		}
+		const lowerLabelTeeth = {
+			type: 'lower',
+			labels: new Array(lowerColor.length/3).fill(0)
+		}
+		initFilter(upperLabelTeeth, lowerLabelTeeth)
+		upperFilterNormal.setInputData(upperPolyData)
+		lowerFilterNormal.setInputData(lowerPolyData)
+		allActorList.fullToothPolyData.upper.mapper.setInputConnection(upperFilterNormal.getOutputPort())
+		allActorList.fullToothPolyData.lower.mapper.setInputConnection(lowerFilterNormal.getOutputPort())
+
+
+
+		segContext = {
+			upper: {
+				polyData: upperPolyData,
+				color: upperColor,
+				filter: upperFilterNormal,
+				label: upperLabelTeeth
+			},
+			lower: {
+				polyData: lowerPolyData,
+				color: lowerColor,
+				filter: lowerFilterNormal,
+				label: lowerLabelTeeth
+			},
+			segMode: props.actorInScene.segMode
+		}
+		global.segContext = segContext;
+		turnOnSegMouse()
+		console.log("segmode now, segContext updated")
+	}
+	// 右键侦听
+	if (segContext != null &&props.actorInScene.segMode){
+		const { renderWindow, renderer } = vtkContext;
+		// 右键按下
+		renderWindow.getInteractor().onRightButtonPress((callData) => {
+  			segContext.isRightMousePressed = true;
+  			return;
+		})
+		// 右键释放
+		renderWindow.getInteractor().onRightButtonRelease((callData) => {
+			segContext.isRightMousePressed = false;
+			if ( props.actorInScene.segMode == false ) { return }
+			segContext.upper.polyData.modified()
+			segContext.lower.polyData.modified()
+		})
+	}
 	if (vtkContext && !initRenderCamera) {
 		const { renderWindow, renderer } = vtkContext;
 		// 初始加载需要调整一次镜头
