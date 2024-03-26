@@ -1308,6 +1308,65 @@ global.allPolyFace = allPolyFace
 
 
 // ------------------------------------------------------------------------------------------------
+// 监视segmentflag 
+// ------------------------------------------------------------------------------------------------
+watch(()=>store.state.actorHandleState.segmentFlag, (newVal) => {
+	if(newVal == false) {return}
+	console.log('get segmentflag:', newVal)
+	const upperPolyData = segContext.upper.polyData
+	const lowerPolyData = segContext.lower.polyData
+	let id = 'test01'
+	segmentBothTooth(upperPolyData, lowerPolyData, id)
+})
+
+
+// ------------------------------------------------------------------------------------------------
+// 发送分割请求 
+// ------------------------------------------------------------------------------------------------
+function segmentBothTooth(upperPolyData, lowerPolyData, id) {
+  // let writer = vtkXMLPolyDataWriter.newInstance();
+  // let polyDataAsString = writer.write(polyData);
+  // let formData = new FormData();
+  // formData.append("polyData", new Blob([polyDataAsString], { type: "text/xml" }));
+
+  let upperPoints = upperPolyData.getPoints();
+  let upperPolys = upperPolyData.getPolys();
+  let lowerPoints = lowerPolyData.getPoints();
+  let lowerPolys = lowerPolyData.getPolys();
+  // console.log(points)
+  // console.log(polys)
+
+  const allData = { 
+	id: id, 
+	upperPoints: upperPoints, 
+	upperPolys: upperPolys, 
+	lowerPoints:lowerPoints,
+	lowerPolys:lowerPolys 
+	}
+  const jsonData = JSON.stringify(allData);
+  // 发送数据到后端  
+  fetch('http://127.0.0.1:8000/segmentBothTooth/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: jsonData
+  })
+    .then(response => response.json())
+    .then(data => {
+		// todo 接收数据
+      console.log('Success:', data);
+	  store.dispatch("actorHandleState/updateSegmentFlag", false)
+    //   segContext.upper.label = data['labelData'];
+    //   segContext[teethType].polyData.modified()
+    //   vtkContext.renderWindow.render()
+    })
+    .catch(error => {
+      // 处理错误  
+	  store.dispatch("actorHandleState/updateSegmentFlag", false)
+    });
+}
+// ------------------------------------------------------------------------------------------------
 // 模型的普通上色filter 
 // ------------------------------------------------------------------------------------------------
 // TODO 切换颜色 不用更多filter
@@ -1438,7 +1497,7 @@ function turnOnSegMouse() {
 	})
 	// vtkContainer.value.addEventListener("mousemove", throttleSegMouseHandler);
 }
-// todo 推出模式后停止拾取
+// done 推出模式后停止拾取
 
 // ------------------------------------------------------------------------------------------------
 // 在鼠标事件上进行拾取的函数  eventToWindowXY直接用已定义好的
@@ -1490,7 +1549,7 @@ async function processSegSelections(selections) {
 	console.log('selected prop id', propID)
 	console.log('selected cell id', attributeID)
 
-	// todo 若右键按下，控制渲染
+	// done 若右键按下，控制渲染
 	// if (propID != 4 && propID != 3 && propID != 2 && propID != 1) {return}
 
 	let upperFlag = props.actorInScene.upper

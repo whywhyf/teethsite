@@ -62,6 +62,9 @@ export default {
         updateDentalArchLockState(context, value) {
             context.commit("UpdateDentalArchLockState", value);
         },
+        updateSegmentFlag(context, value) {
+            context.commit("UpdateSegmentFlag", value);
+        },
     },
     mutations: {
         UpdateSimMode(state, value) {
@@ -258,8 +261,14 @@ export default {
         UpdateDentalArchLockState(state, value) {
             state.teethArrange.lockDentalArch = value;
         },
+        UpdateSegmentFlag(state, value) {
+            state.segmentFlag = value;
+        }
     },
     state: {
+        // 牙齿分割标志，true代表需要分割或已分割
+        segmentFlag: false,
+
         simMode: "simBracketFix", //"simToothFix",
         currentSelectBracketName: "",
 

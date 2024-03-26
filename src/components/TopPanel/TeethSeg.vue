@@ -53,7 +53,7 @@
 				<div class="half clear-fix">
 					<button
 						class="handle-btn teeth-type-button"
-						@click="generateTeethRoot()"
+						@click="segmentTooth()"
 					>
 						分割
 					</button>
@@ -159,16 +159,13 @@ function resetTeethRoot() {
 }
 const generateRootRecord = computed(() => store.state.actorHandleState.generateRootRecord);
 
-function generateTeethRoot() {
-	if(dentalArchAdjustType.value=='upper'){
-		store.dispatch("actorHandleState/updateGenerateRootRecord", {
-			upper: true,
-		});
-	}else if(dentalArchAdjustType.value=='lower'){
-		store.dispatch("actorHandleState/updateGenerateRootRecord", {
-			lower: true,
-		});
-	}
+
+// ------------------------------------------------------------------------------------------------
+// 发送牙齿分割信号
+// ------------------------------------------------------------------------------------------------
+function segmentTooth(){
+	store.dispatch("actorHandleState/updateSegmentFlag", true)
+	console.log('segmentfalg:', store.state.actorHandleState.segmentFlag)
 }
 
 /**
