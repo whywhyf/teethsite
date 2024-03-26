@@ -1292,6 +1292,21 @@ function initColorArray(polyData, r, g, b) {
 let upperLabelTeeth = null;
 let lowerLabelTeeth = null;
 
+
+// ------------------------------------------------------------------------------------------------
+// 微调指示器polydata
+// ------------------------------------------------------------------------------------------------
+const polyFace = vtkPolyData.newInstance()
+global.polyFace = polyFace
+const faceMapper = vtkMapper.newInstance();
+const faceActor = vtkActor.newInstance();
+faceActor.setMapper(faceMapper);
+const polyFaceList = []
+
+let allPolyFace = vtkAppendPolyData.newInstance()
+global.allPolyFace = allPolyFace
+
+
 // ------------------------------------------------------------------------------------------------
 // 模型的普通上色filter 
 // ------------------------------------------------------------------------------------------------
@@ -1471,37 +1486,78 @@ async function processSegSelections(selections) {
 	global.selections = selections;
 	// console.log('selected', compositeID)
 	// console.log('selected', prop)
+	console.log('selected compo id', compositeID)
 	console.log('selected prop id', propID)
 	console.log('selected cell id', attributeID)
 
 	// todo 若右键按下，控制渲染
+	// if (propID != 4 && propID != 3 && propID != 2 && propID != 1) {return}
 
-	drawCell(attributeID, prop, propID)
+	let upperFlag = props.actorInScene.upper
+	let lowerFlag = props.actorInScene.lower
+	if(upperFlag == true && lowerFlag == true){
+		if(propID == 5){return}
+	}else if(upperFlag == true){
+		if(propID == 3){return}
+	}else if(lowerFlag == true){
+		if(propID == 3){return}
+	}
+	drawCell(attributeID, prop, propID, compositeID)
+	// vtkContext.renderWindow.render()
 	
 
 }
 
-async function drawCell(attributeID, prop, propID){
+async function drawCell(attributeID, prop, propID, compositeID){
 	
 	if (segContext.isRightMousePressed){
 		console.log('draw', propID)
 		if (attributeID || attributeID === 0) {
 			const input = prop.getMapper().getInputData();
-			if (!input.getCells()) {
-      			input.buildCells();
-    		}
+			// if (!input.getCells()) {
+      		// 	input.buildCells();
+    		// }
 			
 			let teethType = null
-			if (propID == 2){
+			let upperFlag = props.actorInScene.upper
+			let lowerFlag = props.actorInScene.lower
+			if(upperFlag == true && lowerFlag == true){
+				if (compositeID == 3){
+					if(propID == 2){teethType = 'upper'}
+					if(propID == 3){teethType = 'lower'}
+				}else if(compositeID == 5){
+					if(propID == 3){teethType = 'upper'}
+					if(propID == 4){teethType = 'lower'}
+				}
+			}else if(upperFlag == true){
 				teethType = 'upper'
-			}else if(propID == 3){
+			}else if(lowerFlag == true){
 				teethType = 'lower'
 			}
+
 			const cellPoints = input.getCellPoints(attributeID);
 			if (cellPoints) {
 				const pointIds = cellPoints.cellPointIds;
+
+				// 添加指示器polydata
+				let num = 0
+				const facePoints = []
+				const facePolys = [pointIds.length]
 				for (let pointId of pointIds) {
-					// 更新
+					const xyz = input.getPoints().getPoint(pointId)
+					facePoints.push(xyz[0], xyz[1] - 0.01, xyz[2])
+					facePolys.push(num++)
+				}
+				const polyFace = vtkPolyData.newInstance()
+				polyFace.getPoints().setData(Float32Array.from(facePoints), 3);
+				polyFace.getPolys().setData(Uint32Array.from(facePolys));
+				allPolyFace.addInputData(polyFace)
+				faceMapper.setInputConnection(allPolyFace.getOutputPort())
+          		vtkContext.renderer.addActor(faceActor)
+				vtkContext.renderWindow.render()
+
+				// 更新label
+				for (let pointId of pointIds) {
 					segContext[teethType].label['labels'][pointId] = 1;
 				}
 				
@@ -1577,6 +1633,15 @@ watch(props.actorInScene, (newVal) => {
 			if ( props.actorInScene.segMode == false ) { return }
 			segContext.upper.polyData.modified()
 			segContext.lower.polyData.modified()
+			// 内存释放
+			vtkContext.renderer.removeActor(faceActor)
+			vtkContext.renderWindow.render()
+			for (let polyData of allPolyFace.get().inputData) {
+				polyData.delete()
+				// console.log('=',polyData===polyFace)
+			}
+			allPolyFace.delete()
+			allPolyFace = vtkAppendPolyData.newInstance()
 		})
 	}
 	if (vtkContext && !initRenderCamera) {
