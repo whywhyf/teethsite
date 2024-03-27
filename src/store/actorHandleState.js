@@ -65,6 +65,12 @@ export default {
         updateSegmentFlag(context, value) {
             context.commit("UpdateSegmentFlag", value);
         },
+        updateSwitchColorModeFlag(context, value) {
+            context.commit("UpdateSwitchColorModeFlag", value);
+        },
+        updatePushLabelFlag(context, value) {
+            context.commit("UpdatePushLabelFlag", value);
+        },
     },
     mutations: {
         UpdateSimMode(state, value) {
@@ -263,11 +269,19 @@ export default {
         },
         UpdateSegmentFlag(state, value) {
             state.segmentFlag = value;
+        },
+        UpdateSwitchColorModeFlag(state, value) {
+            state.switchColorModeFlag = value;
+        },
+        UpdatePushLabelFlag(state, value) {
+            state.pushLabelFlag = value;
         }
     },
     state: {
         // 牙齿分割标志，true代表需要分割或已分割
         segmentFlag: false,
+        switchColorModeFlag:false,
+        pushLabelFlag:false,
 
         simMode: "simBracketFix", //"simToothFix",
         currentSelectBracketName: "",

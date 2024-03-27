@@ -67,14 +67,14 @@
 					<button
 						class="handle-btn teeth-type-button"
 						:class="{ disabled: false }"
-						@click="resetTeethRootParams()"
+						@click="switchColorMode()"
 					>
-						switch
+						Switch
 					</button>
 				</div>
 				<div class="half clear-fix">
-					<button class="handle-btn teeth-type-button" @click="resetTeethRoot()">
-						push
+					<button class="handle-btn teeth-type-button" @click="pushLabel()">
+						Push
 					</button>
 				</div>
 			</div>
@@ -166,6 +166,24 @@ const generateRootRecord = computed(() => store.state.actorHandleState.generateR
 function segmentTooth(){
 	store.dispatch("actorHandleState/updateSegmentFlag", true)
 	console.log('segmentfalg:', store.state.actorHandleState.segmentFlag)
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// 发送切换上色模式信号
+// ------------------------------------------------------------------------------------------------
+function switchColorMode(){
+	store.dispatch("actorHandleState/updateSwitchColorModeFlag", true)
+	console.log('switch color mode flag:', store.state.actorHandleState.switchColorModeFlag)
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// 发送push label信号
+// ------------------------------------------------------------------------------------------------
+function pushLabel(){
+	store.dispatch("actorHandleState/updatePushLabelFlag", true)
+	console.log('push label flag:', store.state.actorHandleState.pushLabelFlag)
 }
 
 /**

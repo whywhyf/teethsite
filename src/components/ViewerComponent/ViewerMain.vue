@@ -1354,22 +1354,118 @@ function segmentBothTooth(upperPolyData, lowerPolyData, id) {
   })
     .then(response => response.json())
     .then(data => {
-		// todo 接收数据
+		// done 接收数据并渲染
       console.log('Success:', data);
 	  store.dispatch("actorHandleState/updateSegmentFlag", false)
-    //   segContext.upper.label = data['labelData'];
-    //   segContext[teethType].polyData.modified()
-    //   vtkContext.renderWindow.render()
+      segContext.upper.label['labels'] = data['upper']['labels'];
+	  segContext.lower.label['labels'] = data['lower']['labels'];
+      segContext.upper.polyData.modified()
+	  segContext.lower.polyData.modified()
+      vtkContext.renderWindow.render()
+	  segContext.hasSeged = true
     })
     .catch(error => {
       // 处理错误  
 	  store.dispatch("actorHandleState/updateSegmentFlag", false)
     });
 }
+
+
+// ------------------------------------------------------------------------------------------------
+// 监视pushlabelflag 
+// ------------------------------------------------------------------------------------------------
+watch(()=>store.state.actorHandleState.pushLabelFlag, (newVal) => {
+	if(newVal == false) {return}
+	if (segContext.hasSeged == undefined || segContext.hasSeged == false) {
+		alert('未进行分割!')
+		store.dispatch("actorHandleState/updatePushLabelFlag", false)
+		return
+	}
+	console.log('get push flag:', newVal)
+
+	const upperLabel = {
+		id: 'test01',
+		type: 'upper',
+        label: segContext.upper.label
+	}
+	const lowerLabel = {
+		id: 'test01',
+		type: 'lower',
+        label: segContext.lower.label
+    }
+	saveLabelRequest(upperLabel)
+	saveLabelRequest(lowerLabel)
+	store.dispatch("actorHandleState/updatePushLabelFlag", false)
+})
+
+
+// ----------------------------------------------------------------------------
+// 发送保存label的请求
+// ----------------------------------------------------------------------------
+function saveLabelRequest(label){
+	fetch('http://127.0.0.1:8000/saveLabelById/', {
+		method: 'POST',
+		headers: {
+		'Content-Type': 'application/json',
+		},
+		body: JSON.stringify(label),
+		// credentials: 'include' 
+	})
+	.then(response => response.json())
+	.then(data => {
+		console.log('Success:', data);
+	})
+	.catch((error) => {
+		console.error('Error:', error);
+	});
+  	console.log('push!')
+}
+
+
+
+// ----------------------------------------------------------------------------
+// 创建颜色板
+// ----------------------------------------------------------------------------
+const colorbar = [
+  [255, 0, 0],
+  [255, 165, 0],
+  [255, 255, 0],
+  [0, 255, 0],
+  [0, 127, 255],
+  [0, 0, 255],
+  [139, 0, 255],
+]
+
+
+// ------------------------------------------------------------------------------------------------
+// 监视switchColorModeflag 
+// ------------------------------------------------------------------------------------------------
+watch(()=>store.state.actorHandleState.switchColorModeFlag, (newVal) => {
+	if(newVal == false) {return}
+	console.log('get switch flag:', newVal)
+	if (segContext.colorModeNow == segContext.colorModes.normal) {
+		segContext.colorModeNow = segContext.colorModes.colorful
+	}else if (segContext.colorModeNow == segContext.colorModes.colorful) {
+		segContext.colorModeNow = segContext.colorModes.normal
+	}
+	segContext.upper.polyData.modified()
+	segContext.lower.polyData.modified()
+    vtkContext.renderWindow.render()
+	// 复原信号
+	store.dispatch("actorHandleState/updateSwitchColorModeFlag", false)
+})
+
+
 // ------------------------------------------------------------------------------------------------
 // 模型的普通上色filter 
 // ------------------------------------------------------------------------------------------------
-// TODO 切换颜色 不用更多filter
+// todo 把数据集弄过来评估一下模型性能
+// done push操作
+// todo undo redo
+// todo 临时反馈的polydata的颜色和画笔一致
+// todo 给吸色,分割,切换颜色加入toast
+// done 中键切换画笔
+// done 切换颜色 不用更多filter
 const upperFilterNormal = vtkCalculator.newInstance()
 const lowerFilterNormal = vtkCalculator.newInstance()
 function initFilter(upperLabelTeeth, lowerLabelTeeth){
@@ -1396,33 +1492,57 @@ function initFilter(upperLabelTeeth, lowerLabelTeeth){
 			// Since we are passed coords as a 3-component array,
 			// loop over all the points and compute the point-data output:
 
-			for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
-				if (upperLabelTeeth != null) {
-					if (upperLabelTeeth['labels'][i] == 0) {
-						// 肉色241, 169, 153
-						temp[i * 3] = 241
-						temp[i * 3 + 1] = 169
-						temp[i * 3 + 2] = 153
+			// 获取颜色模式
+			const colorModeNow = segContext.colorModeNow
+			console.log('colorModeNow:', colorModeNow)
+			// 普通上色模式
+			if (colorModeNow == 'normal') {
+				for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
+					if (upperLabelTeeth != null) {
+						if (upperLabelTeeth['labels'][i] == 0) {
+							// 肉色241, 169, 153
+							temp[i * 3] = 241
+							temp[i * 3 + 1] = 169
+							temp[i * 3 + 2] = 153
+						} else {
+							// 白色255，255，255
+							// 252, 248, 239
+							temp[i * 3] = 252
+							temp[i * 3 + 1] = 248
+							temp[i * 3 + 2] = 239
+						}
 					} else {
-						// 白色255，255，255
-						// 252, 248, 239
-
-						temp[i * 3] = 252
-						temp[i * 3 + 1] = 248
-						temp[i * 3 + 2] = 239
-
-						// let colorId = upperLabelTeeth['labels'][i] % colorbar.length
-						// temp[i * 3] = colorbar[colorId][0]
-						// temp[i * 3 + 1] = colorbar[colorId][1]
-						// temp[i * 3 + 2] = colorbar[colorId][2]
-
+						temp[i * 3] = 255
+						temp[i * 3 + 1] = 0
+						temp[i * 3 + 2] = 255
 					}
-				} else {
-					temp[i * 3] = 255
-					temp[i * 3 + 1] = 0
-					temp[i * 3 + 2] = 255
+				}
+			} 
+			// 彩色上色模式
+			else if (colorModeNow == 'colorful'){
+				for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
+					if (upperLabelTeeth != null) {
+						if (upperLabelTeeth['labels'][i] == 0) {
+							// 肉色241, 169, 153
+							temp[i * 3] = 241
+							temp[i * 3 + 1] = 169
+							temp[i * 3 + 2] = 153
+						} else {
+							// 白色255，255，255
+							// 252, 248, 239
+							let colorId = upperLabelTeeth['labels'][i] % colorbar.length
+							temp[i * 3] = colorbar[colorId][0]
+							temp[i * 3 + 1] = colorbar[colorId][1]
+							temp[i * 3 + 2] = colorbar[colorId][2]
+						}
+					} else {
+						temp[i * 3] = 255
+						temp[i * 3 + 1] = 0
+						temp[i * 3 + 2] = 255
+					}
 				}
 			}
+
 			// Mark the output vtkDataArray as modified
 			arraysOut.forEach((x) => x.modified());
 		},
@@ -1451,29 +1571,54 @@ function initFilter(upperLabelTeeth, lowerLabelTeeth){
 			// Since we are passed coords as a 3-component array,
 			// loop over all the points and compute the point-data output:
 
-			for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
-				if (lowerLabelTeeth != null) {
-					if (lowerLabelTeeth['labels'][i] == 0) {
-						// 肉色241, 169, 153
-						temp[i * 3] = 241
-						temp[i * 3 + 1] = 169
-						temp[i * 3 + 2] = 153
+			// 获取颜色模式
+			const colorModeNow = segContext.colorModeNow
+			console.log('colorModeNow:', colorModeNow)
+			// 普通上色模式
+			if (colorModeNow == 'normal') {
+				for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
+					if (lowerLabelTeeth != null) {
+						if (lowerLabelTeeth['labels'][i] == 0) {
+							// 肉色241, 169, 153
+							temp[i * 3] = 241
+							temp[i * 3 + 1] = 169
+							temp[i * 3 + 2] = 153
+						} else {
+							// 白色255，255，255
+							// 252, 248, 239
+							temp[i * 3] = 252
+							temp[i * 3 + 1] = 248
+							temp[i * 3 + 2] = 239
+						}
 					} else {
-						// 白色255，255，255
-						// 252, 248, 239
-						
-						temp[i * 3] = 252
-						temp[i * 3 + 1] = 248
-						temp[i * 3 + 2] = 239
-						// let colorId = lowerLabelTeeth['labels'][i] % colorbar.length
-						// temp[i * 3] = colorbar[colorId][0]
-						// temp[i * 3 + 1] = colorbar[colorId][1]
-						// temp[i * 3 + 2] = colorbar[colorId][2]
+						temp[i * 3] = 255
+						temp[i * 3 + 1] = 0
+						temp[i * 3 + 2] = 255
 					}
-				} else {
-					temp[i * 3] = 0
-					temp[i * 3 + 1] = 255
-					temp[i * 3 + 2] = 255
+				}
+			} 
+			// 彩色上色模式
+			else if (colorModeNow == 'colorful'){
+				for (let i = 0, sz = coords.length / 3; i < sz; ++i) {
+					if (lowerLabelTeeth != null) {
+						if (lowerLabelTeeth['labels'][i] == 0) {
+							// 肉色241, 169, 153
+							temp[i * 3] = 241
+							temp[i * 3 + 1] = 169
+							temp[i * 3 + 2] = 153
+						} else {
+							// 白色255，255，255
+							// 252, 248, 239
+							let colorId = lowerLabelTeeth['labels'][i] % colorbar.length
+							temp[i * 3] = colorbar[colorId][0]
+							temp[i * 3 + 1] = colorbar[colorId][1]
+							temp[i * 3 + 2] = colorbar[colorId][2]
+						}
+					} else {
+						temp[i * 3] = 255
+						temp[i * 3 + 1] = 0
+						temp[i * 3 + 2] = 255
+					}
 				}
 			}
 			// Mark the output vtkDataArray as modified
@@ -1562,14 +1707,20 @@ async function processSegSelections(selections) {
 		if(propID == 3){return}
 	}
 	drawCell(attributeID, prop, propID, compositeID)
+	
+	// todo 若中键按下，拾取画笔颜色
+	if (segContext.isMiddleMousePressed){
+
+	}
 	// vtkContext.renderWindow.render()
 	
 
 }
 
 async function drawCell(attributeID, prop, propID, compositeID){
-	
-	if (segContext.isRightMousePressed){
+
+	// 如果鼠标按下
+	if (segContext.isRightMousePressed || segContext.isMiddleMousePressed){
 		console.log('draw', propID)
 		if (attributeID || attributeID === 0) {
 			const input = prop.getMapper().getInputData();
@@ -1598,31 +1749,42 @@ async function drawCell(attributeID, prop, propID, compositeID){
 			if (cellPoints) {
 				const pointIds = cellPoints.cellPointIds;
 
-				// 添加指示器polydata
-				let num = 0
-				const facePoints = []
-				const facePolys = [pointIds.length]
-				for (let pointId of pointIds) {
-					const xyz = input.getPoints().getPoint(pointId)
-					facePoints.push(xyz[0], xyz[1] - 0.01, xyz[2])
-					facePolys.push(num++)
-				}
-				const polyFace = vtkPolyData.newInstance()
-				polyFace.getPoints().setData(Float32Array.from(facePoints), 3);
-				polyFace.getPolys().setData(Uint32Array.from(facePolys));
-				allPolyFace.addInputData(polyFace)
-				faceMapper.setInputConnection(allPolyFace.getOutputPort())
-          		vtkContext.renderer.addActor(faceActor)
-				vtkContext.renderWindow.render()
+				// 如果右键按下
+				if (segContext.isRightMousePressed){
+					// 添加指示器polydata
+					let num = 0
+					const facePoints = []
+					const facePolys = [pointIds.length]
+					for (let pointId of pointIds) {
+						const xyz = input.getPoints().getPoint(pointId)
+						facePoints.push(xyz[0], xyz[1] - 0.01, xyz[2])
+						facePolys.push(num++)
+					}
+					const polyFace = vtkPolyData.newInstance()
+					polyFace.getPoints().setData(Float32Array.from(facePoints), 3);
+					polyFace.getPolys().setData(Uint32Array.from(facePolys));
+					allPolyFace.addInputData(polyFace)
+					faceMapper.setInputConnection(allPolyFace.getOutputPort())
+					vtkContext.renderer.addActor(faceActor)
+					vtkContext.renderWindow.render()
 
-				// 更新label
-				for (let pointId of pointIds) {
-					segContext[teethType].label['labels'][pointId] = 1;
+					// 更新label
+					for (let pointId of pointIds) {
+						segContext[teethType].label['labels'][pointId] = segContext.penType;
+					}
 				}
+				// 如果中键按下
+				if (segContext.isMiddleMousePressed){
+					// 中键按下吸色
+					segContext.penType = segContext[teethType].label['labels'][pointIds[0]]
+					console.log('pentype:',segContext.penType)
+				}
+
 				
 			}
 		}
 	}
+
 }
 let segContext = null;
 const widgetManager = vtkWidgetManager.newInstance();
@@ -1657,7 +1819,7 @@ watch(props.actorInScene, (newVal) => {
 		allActorList.fullToothPolyData.upper.mapper.setInputConnection(upperFilterNormal.getOutputPort())
 		allActorList.fullToothPolyData.lower.mapper.setInputConnection(lowerFilterNormal.getOutputPort())
 
-
+		const colorModes = {normal:'normal', colorful:'colorful'}
 
 		segContext = {
 			upper: {
@@ -1672,7 +1834,11 @@ watch(props.actorInScene, (newVal) => {
 				filter: lowerFilterNormal,
 				label: lowerLabelTeeth
 			},
-			segMode: props.actorInScene.segMode
+			segMode: props.actorInScene.segMode,
+			penType: 0,
+			colorModes: colorModes,
+			colorModeNow: colorModes.colorful,
+			hasSeged: false,
 		}
 		global.segContext = segContext;
 		turnOnSegMouse()
@@ -1684,6 +1850,8 @@ watch(props.actorInScene, (newVal) => {
 		// 右键按下
 		renderWindow.getInteractor().onRightButtonPress((callData) => {
   			segContext.isRightMousePressed = true;
+			if(props.actorInScene.segMode == false){return}
+			pickOnSegMouseEvent(callData)
   			return;
 		})
 		// 右键释放
@@ -1701,6 +1869,22 @@ watch(props.actorInScene, (newVal) => {
 			}
 			allPolyFace.delete()
 			allPolyFace = vtkAppendPolyData.newInstance()
+		})
+	}
+	// 中键侦听
+	if (segContext && props.actorInScene.segMode) {
+		const { renderWindow, renderer } = vtkContext;
+		// 中键按下
+		renderWindow.getInteractor().onMiddleButtonPress((callData) => {
+  			segContext.isMiddleMousePressed = true;
+			if(props.actorInScene.segMode == false){return}
+			pickOnSegMouseEvent(callData)
+  			return;
+		})
+		// 中键释放
+		renderWindow.getInteractor().onMiddleButtonRelease((callData) => {
+			segContext.isMiddleMousePressed = false;
+
 		})
 	}
 	if (vtkContext && !initRenderCamera) {
