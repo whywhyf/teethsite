@@ -358,7 +358,7 @@ export default function(allActorList) {
                 arch: lower && arch <= 1, // 牙弓线
             },
         };
-        // todo seg时把目前所有actor清除
+        // done seg时把目前所有actor清除
         if (segMode){
             for (let teethType of ["upper", "lower"]) {
                 for (let key in curActorInScene[teethType]){
@@ -476,7 +476,7 @@ export default function(allActorList) {
             }
         }
 
-        // todo 如果是segmode 清空list并加入seg actor
+        // done 如果是segmode 清空list并加入seg actor
         console.log('segmode actorlist',allActorList.fullToothPolyData)
         if (segMode) {
             addActorsList.length = 0;

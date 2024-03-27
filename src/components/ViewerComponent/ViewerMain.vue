@@ -33,10 +33,12 @@
 		<Calculating
 			:isFinish="isFinish"
 		/>
+		<Toast v-model:show="toastContext.isShow" v-model:msg="toastContext.message" v-model:duration="toastContext.duration"></Toast>
 	</div>
 </template>
 
 <script setup>
+import Toast from "./Toast.vue"
 import {
 	ref,
 	computed,
@@ -47,6 +49,7 @@ import {
 	getCurrentInstance,
 	toRaw,
 	defineProps,
+	reactive,
 } from "vue";
 import { useStore } from "vuex";
 import Calculating from "./Calculating.vue";
@@ -103,6 +106,7 @@ import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import vtkCalculator from '@kitware/vtk.js/Filters/General/Calculator';
 import { FieldDataTypes } from '@kitware/vtk.js/Common/DataModel/DataSet/Constants';
 import { AttributeTypes } from '@kitware/vtk.js/Common/DataModel/DataSetAttributes/Constants';
+
 
 const props = defineProps({
 	changeLoadingMessage: {
@@ -1308,11 +1312,27 @@ global.allPolyFace = allPolyFace
 
 
 // ------------------------------------------------------------------------------------------------
+// toast 
+// ------------------------------------------------------------------------------------------------
+const toastContext = reactive({
+	isShow: false,
+	message: "hello toast",
+    duration: 3000,
+})
+
+function showToast(message, duration) {    
+	toastContext.message = message;
+    toastContext.duration = duration;
+	toastContext.isShow = true;
+}
+// const isShow = ref(false)
+// ------------------------------------------------------------------------------------------------
 // 监视segmentflag 
 // ------------------------------------------------------------------------------------------------
 watch(()=>store.state.actorHandleState.segmentFlag, (newVal) => {
 	if(newVal == false) {return}
 	console.log('get segmentflag:', newVal)
+	showToast('开始分割！ 请稍等...', 3000)
 	const upperPolyData = segContext.upper.polyData
 	const lowerPolyData = segContext.lower.polyData
 	let id = 'test01'
@@ -1363,6 +1383,7 @@ function segmentBothTooth(upperPolyData, lowerPolyData, id) {
 	  segContext.lower.polyData.modified()
       vtkContext.renderWindow.render()
 	  segContext.hasSeged = true
+	  showToast('分割完成！', 1000)
     })
     .catch(error => {
       // 处理错误  
@@ -1382,7 +1403,7 @@ watch(()=>store.state.actorHandleState.pushLabelFlag, (newVal) => {
 		return
 	}
 	console.log('get push flag:', newVal)
-
+	showToast('发送标签数据', 1000)
 	const upperLabel = {
 		id: 'test01',
 		type: 'upper',
@@ -1414,6 +1435,7 @@ function saveLabelRequest(label){
 	.then(response => response.json())
 	.then(data => {
 		console.log('Success:', data);
+		showToast('标签数据发送成功！', 1000)
 	})
 	.catch((error) => {
 		console.error('Error:', error);
@@ -1443,11 +1465,13 @@ const colorbar = [
 watch(()=>store.state.actorHandleState.switchColorModeFlag, (newVal) => {
 	if(newVal == false) {return}
 	console.log('get switch flag:', newVal)
+	
 	if (segContext.colorModeNow == segContext.colorModes.normal) {
 		segContext.colorModeNow = segContext.colorModes.colorful
 	}else if (segContext.colorModeNow == segContext.colorModes.colorful) {
 		segContext.colorModeNow = segContext.colorModes.normal
 	}
+	showToast('切换上色模式为'+segContext.colorModeNow, 1000)
 	segContext.upper.polyData.modified()
 	segContext.lower.polyData.modified()
     vtkContext.renderWindow.render()
@@ -1462,8 +1486,8 @@ watch(()=>store.state.actorHandleState.switchColorModeFlag, (newVal) => {
 // todo 把数据集弄过来评估一下模型性能
 // done push操作
 // todo undo redo
-// todo 临时反馈的polydata的颜色和画笔一致
-// todo 给吸色,分割,切换颜色加入toast
+// done 临时反馈的polydata的颜色和画笔一致
+// done 给吸色,分割,切换颜色加入toast
 // done 中键切换画笔
 // done 切换颜色 不用更多filter
 const upperFilterNormal = vtkCalculator.newInstance()
@@ -1592,7 +1616,7 @@ function initFilter(upperLabelTeeth, lowerLabelTeeth){
 						}
 					} else {
 						temp[i * 3] = 255
-						temp[i * 3 + 1] = 0
+						temp[i * 3 + 1] = 255
 						temp[i * 3 + 2] = 255
 					}
 				}
@@ -1616,7 +1640,7 @@ function initFilter(upperLabelTeeth, lowerLabelTeeth){
 						}
 					} else {
 						temp[i * 3] = 255
-						temp[i * 3 + 1] = 0
+						temp[i * 3 + 1] = 255
 						temp[i * 3 + 2] = 255
 					}
 				}
@@ -1708,10 +1732,6 @@ async function processSegSelections(selections) {
 	}
 	drawCell(attributeID, prop, propID, compositeID)
 	
-	// todo 若中键按下，拾取画笔颜色
-	if (segContext.isMiddleMousePressed){
-
-	}
 	// vtkContext.renderWindow.render()
 	
 
@@ -1773,11 +1793,20 @@ async function drawCell(attributeID, prop, propID, compositeID){
 						segContext[teethType].label['labels'][pointId] = segContext.penType;
 					}
 				}
-				// 如果中键按下
+				// done 如果中键按下
 				if (segContext.isMiddleMousePressed){
 					// 中键按下吸色
 					segContext.penType = segContext[teethType].label['labels'][pointIds[0]]
 					console.log('pentype:',segContext.penType)
+					let colorId = segContext.penType % colorbar.length
+					if (segContext.penType == 0){
+						faceActor.getProperty().setColor(241/255, 169/255, 153/255)
+					}else if(segContext.colorModeNow == 'colorful'){
+						faceActor.getProperty().setColor(colorbar[colorId][0]/255, colorbar[colorId][1]/255, colorbar[colorId][2]/255)
+					}else if (segContext.colorModeNow == 'normal'){
+						faceActor.getProperty().setColor(252/255, 248/255, 239/255)
+                    }
+					showToast('已拾取画笔颜色', 1000)
 				}
 
 				
@@ -1807,11 +1836,11 @@ watch(props.actorInScene, (newVal) => {
 
 		const upperLabelTeeth = {
 			type: 'upper',
-			labels: new Array(upperColor.length/3).fill(0)
+			labels: new Array(upperColor.length/3).fill(1)
 		}
 		const lowerLabelTeeth = {
 			type: 'lower',
-			labels: new Array(lowerColor.length/3).fill(0)
+			labels: new Array(lowerColor.length/3).fill(1)
 		}
 		initFilter(upperLabelTeeth, lowerLabelTeeth)
 		upperFilterNormal.setInputData(upperPolyData)
@@ -1837,7 +1866,7 @@ watch(props.actorInScene, (newVal) => {
 			segMode: props.actorInScene.segMode,
 			penType: 0,
 			colorModes: colorModes,
-			colorModeNow: colorModes.colorful,
+			colorModeNow: colorModes.normal,
 			hasSeged: false,
 		}
 		global.segContext = segContext;
