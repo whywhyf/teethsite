@@ -69,12 +69,12 @@
 						:class="{ disabled: false }"
 						@click="switchColorMode()"
 					>
-						Switch
+						切换模式
 					</button>
 				</div>
 				<div class="half clear-fix">
 					<button class="handle-btn teeth-type-button" @click="pushLabel()">
-						Push
+						保存标签
 					</button>
 				</div>
 			</div>
@@ -85,15 +85,17 @@
 				<div class="half clear-fix">
 					<button
 						class="handle-btn teeth-type-button"
-						:class="{ disabled: false }"
-						@click="resetTeethRootParams()"
+						:class="{ disabled: !canUndo }"
+						@click="undo()"
 					>
-						undo
+						Undo
 					</button>
 				</div>
 				<div class="half clear-fix">
-					<button class="handle-btn teeth-type-button" @click="resetTeethRoot()">
-						redo
+					<button class="handle-btn teeth-type-button" 
+							:class="{ disabled: !canRedo }" 
+							@click="redo()">
+						Redo
 					</button>
 				</div>
 			</div>
@@ -185,6 +187,31 @@ function pushLabel(){
 	store.dispatch("actorHandleState/updatePushLabelFlag", true)
 	console.log('push label flag:', store.state.actorHandleState.pushLabelFlag)
 }
+
+
+// ------------------------------------------------------------------------------------------------
+// 发送undo信号
+// ------------------------------------------------------------------------------------------------
+function undo(){
+	store.dispatch("actorHandleState/updateUndoFlag", true)
+	console.log('undo flag:', store.state.actorHandleState.undoFlag)
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// 发送redo信号
+// ------------------------------------------------------------------------------------------------
+function redo(){
+	store.dispatch("actorHandleState/updateRedoFlag", true)
+	console.log('redo flag:', store.state.actorHandleState.redoFlag)
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// 监视canundo canredo 
+// ------------------------------------------------------------------------------------------------
+const canUndo = computed(() => store.state.actorHandleState.canUndo);
+const canRedo = computed(() => store.state.actorHandleState.canRedo);
 
 /**
  * @description: 重置牙根方向参数

@@ -71,6 +71,18 @@ export default {
         updatePushLabelFlag(context, value) {
             context.commit("UpdatePushLabelFlag", value);
         },
+        updateUndoFlag(context, value) {
+            context.commit("UpdateUndoFlag", value);
+        },
+        updateRedoFlag(context, value) {
+            context.commit("UpdateRedoFlag", value);
+        },
+        updateCanUndo(context, value) {
+            context.commit("UpdateCanUndo", value);
+        },
+        updateCanRedo(context, value) {
+            context.commit("UpdateCanRedo", value);
+        },
     },
     mutations: {
         UpdateSimMode(state, value) {
@@ -275,13 +287,29 @@ export default {
         },
         UpdatePushLabelFlag(state, value) {
             state.pushLabelFlag = value;
-        }
+        },
+        UpdateUndoFlag(state, value) {
+            state.undoFlag = value;
+        },
+        UpdateRedoFlag(state, value) {
+            state.redoFlag = value;
+        },
+        UpdateCanUndo(state, value) {
+            state.canUndo = value;
+        },
+        UpdateCanRedo(state, value) {
+            state.canRedo = value;
+        },
     },
     state: {
         // 牙齿分割标志，true代表需要分割或已分割
         segmentFlag: false,
         switchColorModeFlag:false,
         pushLabelFlag:false,
+        undoFlag:false,
+        redoFlag:false,
+        canUndo:false,
+        canRedo:false,
 
         simMode: "simBracketFix", //"simToothFix",
         currentSelectBracketName: "",

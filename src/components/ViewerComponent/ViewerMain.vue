@@ -1480,12 +1480,146 @@ watch(()=>store.state.actorHandleState.switchColorModeFlag, (newVal) => {
 })
 
 
+// ----------------------------------------------------------------------------
+// 定义命令类
+// ---------------------------------------------------------------------------- 
+class LabelCommand {
+    constructor(labelArray) {
+        this.labelArray = labelArray
+
+    }
+
+    redoFunc() {
+        for (let i = 0; i < this.indexArray.length; i++) {
+            this.labelArray[this.indexArray[i]] = this.newValueArray[i]
+        }
+    }
+
+    // 撤销，必须倒序，因为有重复操作的问题
+    undoFunc() {
+        for (let i = this.indexArray.length - 1; i >= 0; i--) {
+            this.labelArray[this.indexArray[i]] = this.oldValueArray[i]
+        }
+    }
+
+    // push一次操作内容
+    inputArray(indexArray, oldValueArray, newValueArray) {
+        this.indexArray = [...indexArray]
+        this.oldValueArray = [...oldValueArray]
+        this.newValueArray = [...newValueArray]
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+// 定义命令管理器类
+// ---------------------------------------------------------------------------- 
+class CommandAdmin {
+    constructor() {
+        // 栈式管理
+        this.history = []
+        this.index = -1
+        this.canUndo = false
+        this.canRedo = false
+        // 最多记录50步
+        this.maxHistoryLength = 50
+    }
+
+    pushCommand(labelCommand) {
+        this.history = this.history.slice(0, this.index + 1);
+        this.history.push(labelCommand)
+        this.index++
+        this.canUndo = true
+        this.canRedo = false
+        // 检查栈的长度，如果超过了限制，移除最早的操作  
+        if (this.history.length > this.maxHistoryLength) {
+            this.history.shift();
+            this.index--
+        }
+    }
+
+    undoCommand() {
+        this.history[this.index].undoFunc()
+        this.index--
+        this.canRedo = true
+        if (this.index == -1) { this.canUndo = false }
+    }
+
+    redoCommand() {
+        this.index++
+        this.history[this.index].redoFunc()
+        this.canUndo = true
+        if (this.index == this.history.length - 1) { this.canRedo = false }
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+// 创建命令实例和命令管理器实例
+// ----------------------------------------------------------------------------
+const commandAdmin = reactive(new CommandAdmin())
+global.commandAdmin = commandAdmin
+// global.labelCommand = labelCommand
+const commandIndexArray = []
+const commandOldValueArray = []
+const commandNewValueArray = []
+
+
+// ----------------------------------------------------------------------------
+// 撤销目前的操作并清理内存
+// ----------------------------------------------------------------------------
+watch(()=>store.state.actorHandleState.undoFlag, (newVal) => {
+	if(newVal == false) {return}
+    console.log('get undo flag:', newVal)
+    commandAdmin.undoCommand()
+	segContext.upper.polyData.modified()
+	segContext.lower.polyData.modified()
+  	vtkContext.renderWindow.render()
+    store.dispatch("actorHandleState/updateUndoFlag", false)
+	console.log('undo!')
+	showToast('撤销操作！', 1000)
+})
+
+
+// ----------------------------------------------------------------------------
+// 恢复目前的操作并清理内存
+// ----------------------------------------------------------------------------
+watch(()=>store.state.actorHandleState.redoFlag, (newVal) => {
+	if(newVal == false) {return}
+    console.log('get redo flag:', newVal)
+    commandAdmin.redoCommand()
+	segContext.upper.polyData.modified()
+	segContext.lower.polyData.modified()
+  	vtkContext.renderWindow.render()
+    store.dispatch("actorHandleState/updateRedoFlag", false)
+	console.log('redo!')
+	showToast('恢复操作！', 1000)
+})
+
+
+// ----------------------------------------------------------------------------
+// 监视canundo
+// ----------------------------------------------------------------------------
+watch(()=>commandAdmin.canUndo, (newVal) => {
+	// showToast('canundo update',1000)
+	store.dispatch("actorHandleState/updateCanUndo", newVal)
+})
+
+
+// ----------------------------------------------------------------------------
+// 监视canredo
+// ----------------------------------------------------------------------------
+watch(()=>commandAdmin.canRedo, (newVal) => {
+	store.dispatch("actorHandleState/updateCanRedo", newVal)
+})
+
+
 // ------------------------------------------------------------------------------------------------
 // 模型的普通上色filter 
 // ------------------------------------------------------------------------------------------------
 // todo 把数据集弄过来评估一下模型性能
 // done push操作
-// todo undo redo
+// done undo redo
 // done 临时反馈的polydata的颜色和画笔一致
 // done 给吸色,分割,切换颜色加入toast
 // done 中键切换画笔
@@ -1790,8 +1924,14 @@ async function drawCell(attributeID, prop, propID, compositeID){
 
 					// 更新label
 					for (let pointId of pointIds) {
+						// 记录操作
+						commandIndexArray.push(pointId)
+						commandOldValueArray.push(segContext[teethType].label['labels'][pointId])
+						commandNewValueArray.push(segContext.penType)
+						// 更新
 						segContext[teethType].label['labels'][pointId] = segContext.penType;
 					}
+					segContext.teethType = teethType
 				}
 				// done 如果中键按下
 				if (segContext.isMiddleMousePressed){
@@ -1898,6 +2038,15 @@ watch(props.actorInScene, (newVal) => {
 			}
 			allPolyFace.delete()
 			allPolyFace = vtkAppendPolyData.newInstance()
+
+			// 记录操作
+			const labelCommand = new LabelCommand(segContext[segContext.teethType].label['labels'])
+			global.labelCommand = labelCommand
+    		labelCommand.inputArray(commandIndexArray, commandOldValueArray, commandNewValueArray)
+			commandIndexArray.length = 0
+			commandOldValueArray.length = 0
+			commandNewValueArray.length = 0
+			commandAdmin.pushCommand(labelCommand)
 		})
 	}
 	// 中键侦听
